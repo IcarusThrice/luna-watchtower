@@ -61,7 +61,7 @@ function handle(url) {
     { granter: ME, grantee: wallet(12), authorization: { '@type': '/cosmos.authz.v1beta1.GenericAuthorization', msg: '/cosmos.staking.v1beta1.MsgUndelegate' }, expiration: iso(now - 5 * day) }] : [] });
   if (p.includes('/feegrant/v1beta1/issued/')) return J({ allowances: p.endsWith(ME) ? [{ granter: ME, grantee: GRANTEE, allowance: { '@type': '/cosmos.feegrant.v1beta1.BasicAllowance', spend_limit: [], expiration: null } }] : [] });
   if ((m = p.match(/wasm\/v1\/contract\/(terra1[0-9a-z]+)$/))) return J({ address: m[1], contract_info: { code_id: '12', creator: ADMIN, admin: ADMIN, label: 'test token' } });
-  if ((m = p.match(/wasm\/v1\/contract\/(terra1[0-9a-z]+)\/smart\//))) return m[1] === TOKEN ? J({ data: { allowances: [{ spender: SPENDER, allowance: '340282366920938463463374607431768211455', expires: { never: {} } }] } }) : { status: 500, body: 'not a cw20' };
+  if ((m = p.match(/wasm\/v1\/contract\/(terra1[0-9a-z]+)\/smart\//))) return m[1] === TOKEN ? J({ data: { allowances: JSON.parse(Buffer.from(decodeURIComponent(p.split('/smart/')[1]), 'base64').toString()).all_allowances.owner !== ME ? [] : [{ spender: SPENDER, allowance: '340282366920938463463374607431768211455', expires: { never: {} } }] } }) : { status: 500, body: 'not a cw20' };
   if (u.host === 'raw.githubusercontent.com' && p.endsWith('assetlist.json')) return J({ chain_name: 'terra2', assets: [{ type_asset: 'cw20', address: TOKEN, symbol: 'TST', denom_units: [{ denom: 'x', exponent: 0 }, { denom: 'tst', exponent: 6 }] }, { type_asset: 'sdk.coin', base: 'uluna', symbol: 'LUNA' }] });
   return { status: 404, body: 'nope' };
 }
@@ -131,7 +131,8 @@ function handle(url) {
     await page.click('#tab-checkup'); await page.fill('#ck-in', ME); await page.click('#ck-run');
     await page.waitForFunction(() => /Action needed/.test(document.querySelector('#ck-out h2')?.innerText || ''), null, { timeout: 15000 });
     const ck = await txt(page, '#ck-out');
-    check('checkup: not on list', /Not on the restricted list/.test(ck));
+    check('checkup: neutral list wording + unanswered origin', /Not among the 471 addresses blocked so far/.test(ck) && /does not show that the recovery phrase is safe/.test(ck) && /Unanswered: where was the recovery phrase first created/.test(ck) && !/Not on the restricted list\n/.test(ck));
+    check('checkup: origin question sits above the account panel', ck.indexOf('Where was this wallet') < ck.indexOf('Transactions signed'));
     check('checkup: crit authz MsgSend + revoke cmd', /can send your coins anywhere/.test(ck) && ck.includes('terrad tx authz revoke ' + GRANTEE + ' /cosmos.bank.v1beta1.MsgSend --from ' + ME + ' --chain-id phoenix-1'));
     check('checkup: stake auth mapped to MsgDelegate, expired grant marked', ck.includes('/cosmos.staking.v1beta1.MsgDelegate') && /Expired/.test(ck));
     check('checkup: unlimited feegrant', /can pay fees from this wallet, with no limit/.test(ck) && ck.includes('terrad tx feegrant revoke ' + ME + ' ' + GRANTEE));
@@ -140,6 +141,7 @@ function handle(url) {
     check('checkup: pubkey note', /Public key is on-chain \(secp256k1\)/.test(ck));
     await page.locator('input[name=origin][value=desktop]').check();
     check('origin advice', /newly generated recovery phrase/.test(await txt(page, '#ck-out .note')));
+    check('origin answer becomes a finding', /Recovery phrase first created in Terra Station Desktop/.test(await page.locator('#ck-out .panel').first().innerText()) && !/Unanswered/.test(await txt(page, '#ck-out')));
     // contract + never-seen
     await page.fill('#ck-in', TOKEN); await page.click('#ck-run');
     await page.waitForFunction(() => /Smart contract/.test(document.querySelector('#ck-out')?.innerText || '') && !/Reading the chain/.test(document.querySelector('#ck-out h2').innerText));
@@ -147,6 +149,11 @@ function handle(url) {
     await page.fill('#ck-in', NEVER); await page.click('#ck-run');
     await page.waitForFunction(() => /No account on phoenix-1 yet/.test(document.querySelector('#ck-out')?.innerText || ''));
     check('checkup: unknown account handled', true);
+    await page.fill('#ck-in', wallet(30)); await page.click('#ck-run');
+    await page.waitForFunction(() => /Worth a look/.test(document.querySelector('#ck-out h2')?.innerText || ''));
+    await page.locator('input[name=origin][value=other]').check();
+    await page.waitForFunction(() => /Nothing flagged/.test(document.querySelector('#ck-out h2').innerText));
+    check('clean wallet: unanswered -> Worth a look, answered other -> Nothing flagged', /Recovery phrase first created outside Terra Station/.test(await txt(page, '#ck-out')));
     await page.fill('#ck-in', ME.slice(0, -1) + (ME.endsWith('q') ? 'p' : 'q')); await page.click('#ck-run');
     check('checkup: bad checksum rejected', /not a valid address/.test(await txt(page, '#ck-msg')));
     await page.fill('#ck-in', valop(1)); await page.click('#ck-run');

@@ -878,21 +878,25 @@ async function loadCw20() {
   return (cw20List = list);
 }
 const ORIGIN = {
-  desktop: ['crit', 'Move everything you still control to a wallet with a newly generated recovery phrase. Importing the old phrase into another wallet does not help, because the phrase itself may be reconstructible. Use current wallet software or a hardware wallet to create the new one.'],
-  extension: ['ok', 'Phoenix Foundation does not currently believe phrases created in the Station browser extension are affected. It used the browser\'s own randomness, not the vulnerable library.'],
-  other: ['ok', 'This flaw is specific to phrases first created in Terra Station Desktop. A phrase created in a hardware wallet or another wallet is not affected by it.'],
-  unsure: ['warn', 'Phoenix Foundation\'s advice is to treat the wallet as possibly affected and move to a newly generated phrase. No complete list of affected addresses exists, so not being on the restricted list does not prove a phrase is safe.'],
+  desktop: ['crit', 'Move everything you still control to a wallet with a newly generated recovery phrase. Importing the old phrase into another wallet does not help, because the phrase itself may be reconstructible. Use current wallet software or a hardware wallet to create the new one.', 'Recovery phrase first created in Terra Station Desktop'],
+  extension: ['ok', 'Phoenix Foundation does not currently believe phrases created in the Station browser extension are affected. It used the browser\'s own randomness, not the vulnerable library.', 'Recovery phrase first created in the Station browser extension'],
+  other: ['ok', 'This flaw is specific to phrases first created in Terra Station Desktop. A phrase created in a hardware wallet or another wallet is not affected by it.', 'Recovery phrase first created outside Terra Station'],
+  unsure: ['warn', 'Phoenix Foundation\'s advice is to treat the wallet as possibly affected and move to a newly generated phrase. No complete list of affected addresses exists, so not being on the restricted list does not prove a phrase is safe.', 'Not sure where the recovery phrase was first created'],
 };
 let ckRun = 0;
 async function runCheckup() {
   const r = readAddr($('ck-in').value), out = $('ck-out'), run = ++ckRun;
   $('ck-msg').textContent = r.ok ? '' : r.why;
   if (!r.ok) return;
-  const a = r.addr, role = S.roles.get(a), F = [];
+  const a = r.addr, role = S.roles.get(a), F = [], isC = r.kind === 'contract';
+  let busyNow = true;
+  const originF = { sev: 'warn', tag: 'Answer', title: 'Unanswered: where was the recovery phrase first created?', detail: 'The chain cannot show this, and it decides whether the Terra Station Desktop flaw applies. Pick an option below.' };
+  const onOrigin = v => { const [sev, text, title] = ORIGIN[v]; Object.assign(originF, { sev, tag: SEVWORD[sev], title, detail: text }); paintHead(busyNow); };
   $('ck-intro').hidden = true; out.hidden = false;
   const head = el('div', { class: 'panel' }), body = el('div', { class: 'wing' });
   out.replaceChildren(head, body);
   const paintHead = busy => {
+    busyNow = busy;
     const rank = { crit: 0, warn: 1, info: 2, ok: 3 };
     F.sort((x, y) => rank[x.sev] - rank[y.sev]);
     const worst = F.length ? F[0].sev : 'ok';
@@ -904,13 +908,13 @@ async function runCheckup() {
   };
   if (role === 'attacker') F.push({ sev: 'crit', tag: 'Restricted', title: 'On the restricted list as attacker-associated', detail: 'Phoenix Foundation ties this address to the exploitation. It cannot start transactions on phoenix-1. Do not send funds to it.' });
   else if (role) F.push({ sev: 'crit', tag: 'Restricted', title: 'On the restricted list as an affected wallet', detail: 'This address cannot start transactions while governance works out a recovery process. If it is yours, email security@phoenix.money with the public address, relevant transaction hashes and roughly when the wallet was created. Never send anyone the recovery phrase.' });
-  else F.push({ sev: 'ok', title: 'Not on the restricted list', detail: 'Checked against ' + S.roles.size + ' addresses (' + S.listNote + '). The list is known to be incomplete.' });
+  else F.push({ sev: 'info', tag: 'List', title: 'Not among the ' + S.roles.size + ' addresses blocked so far', detail: 'This only means the address has not been identified as hit (' + S.listNote + '). It does not show that the recovery phrase is safe: no complete list of vulnerable wallets exists.' });
+  if (!isC) F.push(originF);
   if (!S.live) {
     F.push({ sev: 'info', tag: 'Offline', title: 'Chain checks did not run', detail: 'Holdings, permissions and allowances need a live connection to a node.' });
-    paintHead(false); body.append(originPanel()); return;
+    paintHead(false); if (!isC) body.append(originPanel(onOrigin)); return;
   }
   paintHead(true);
-  const isC = r.kind === 'contract';
   const q = await settle({
     acc: api('/cosmos/auth/v1beta1/accounts/' + a),
     bal: api('/cosmos/bank/v1beta1/balances/' + a + '?pagination.limit=200'),
@@ -991,7 +995,7 @@ async function runCheckup() {
   // cw20
   const tokP = el('div', { class: 'panel' }, el('h3', null, 'Token spending allowances'), el('p', { class: 'empty' }, 'Checking CW20 tokens…'));
   if (failed.length) F.push({ sev: 'info', tag: 'Partial', title: 'Some checks could not be read', detail: 'The node did not answer for: ' + failed.join(', ') + '. Run the checkup again in a moment.' });
-  body.append(el('div', { class: 'panel' }, el('h3', null, 'Account'), kv), hold, authz, feeP, tokP, originPanel());
+  body.append(...[isC ? null : originPanel(onOrigin), el('div', { class: 'panel' }, el('h3', null, 'Account'), kv), hold, authz, feeP, tokP].filter(Boolean));
   paintHead(true);
 
   const toks = await loadCw20();
@@ -1012,9 +1016,9 @@ async function runCheckup() {
   }
   paintHead(false);
 }
-function originPanel() {
-  const out = el('p', { class: 'note', role: 'status' }, 'The chain cannot answer this one. Pick the closest option.');
-  const opt = (v, label) => el('label', null, el('input', { type: 'radio', name: 'origin', value: v, onchange: () => { const [sev, text] = ORIGIN[v]; out.replaceChildren(pill(sev, SEVWORD[sev]), ' ', text); } }), el('span', null, label));
+function originPanel(onPick) {
+  const out = el('p', { class: 'note', role: 'status' }, 'The chain cannot answer this one. Pick the closest option and the result above updates.');
+  const opt = (v, label) => el('label', null, el('input', { type: 'radio', name: 'origin', value: v, onchange: () => { const [sev, text] = ORIGIN[v]; out.replaceChildren(pill(sev, SEVWORD[sev]), ' ', text); if (onPick) onPick(v); } }), el('span', null, label));
   return el('div', { class: 'panel' }, el('h3', null, 'Where was this wallet\'s recovery phrase first created?'),
     el('p', { class: 'small prose' }, 'Older versions of Terra Station Desktop, released before May 2022, generated phrases with too little randomness. What matters is where the phrase was first made, not which wallet it was imported into later.'),
     el('fieldset', { class: 'choices' }, el('legend', { class: 'label', style: 'padding:0;margin-bottom:6px' }, 'First created in'), opt('desktop', 'Terra Station Desktop app'), opt('extension', 'Terra Station browser extension'), opt('other', 'A hardware wallet or a different wallet app'), opt('unsure', 'Not sure')), out);
