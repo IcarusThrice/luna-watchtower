@@ -22,6 +22,7 @@ Not built yet: one-click revoke through a wallet, IBC outflow tracking, contract
 | `data/restricted.json` | Restricted addresses, extracted from `app/ante/blacklist/blacklist.go` at Terra core tag `v2.22.0` |
 | `build.py` | Injects the list into the page and writes `dist/index.html` |
 | `dist/index.html` | The deployable site |
+| `docs/index.html` | The same file, where GitHub Pages serves it from |
 | `test/run.js` | Playwright test with mocked REST responses |
 
 ## Build and test
@@ -34,7 +35,10 @@ node test/run.js
 
 ## Deploy
 
-Any static host works. On Cloudflare Pages: no build command, output directory `dist`.
+Any static host works.
+
+- **GitHub Pages:** Settings → Pages → Deploy from a branch → `main`, folder `/docs`.
+- **Cloudflare Pages:** no build command, output directory `dist`.
 
 At runtime the page also tries to read the current restricted list from the `release/v2.22` branch of `phoenix-directive/core` and falls back to the bundled copy.
 
