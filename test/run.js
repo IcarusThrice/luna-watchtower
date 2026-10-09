@@ -37,7 +37,7 @@ function handle(url) {
   const u = new URL(url), p = u.pathname, q = u.searchParams; let m;
   hits[p.replace(/terra(valoper)?1[0-9a-z]+/g, ':a')] = 1;
   if (p.endsWith('/blocks/latest')) return J({ block: { header: { height: '23201442', time: iso(now - 4000), chain_id: 'phoenix-1' } } });
-  if (p.endsWith('/node_info')) return J({ default_node_info: { version: '0.38.21', network: 'phoenix-1' }, application_version: { name: 'terra', version: '2.22.0', cosmos_sdk_version: 'v0.50.15-terra.0' } });
+  if (p.endsWith('/node_info')) return J({ default_node_info: { version: '0.38.19', network: 'phoenix-1' }, application_version: { name: 'terra', version: '2.22.0', cosmos_sdk_version: 'v0.50.15-terra.0' } });
   if (p.endsWith('/staking/v1beta1/pool')) return J({ pool: { bonded_tokens: '310000000000000', not_bonded_tokens: '9000000000000' } });
   if (p.endsWith('/supply/by_denom')) return J({ amount: { denom: 'uluna', amount: '1180000000000000' } });
   if (p.endsWith('/current_plan')) return J({ plan: null });
@@ -155,7 +155,7 @@ function handle(url) {
     // quantum
     await page.click('#tab-quantum');
     const lad = await txt(page, '#ladder');
-    check('ladder: live versions', /CometBFT 0\.38\.21/.test(lad) && /Cosmos SDK 0\.50\.15/.test(lad) && /Key types allowed today: ed25519/.test(lad) && /Currently 0\.0% of voting power/.test(lad), lad.replace(/\n/g, ' | ').slice(0, 300));
+    check('ladder: live versions', /CometBFT 0\.38\.21 \(the node reports 0\.38\.19/.test(lad) && /Cosmos SDK 0\.50\.15/.test(lad) && /Key types allowed today: ed25519/.test(lad) && /Currently 0\.0% of voting power/.test(lad), lad.replace(/\n/g, ' | ').slice(0, 300));
     check('ladder: 4 not-yet + not measured', (lad.match(/Not yet/g) || []).length === 4 && /Not measured/.test(lad));
     check('qubit chart drawn', (await page.locator('#qubits circle').count()) === 3);
     await page.fill('#qx-in', ME); await page.click('#qx-run');

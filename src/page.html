@@ -372,6 +372,9 @@ const CFG = {
   secureVersion: '2.22.0',
   // Terra core v2.22.0 go.mod, used when no node answers
   staticSdk: '0.50.15', staticComet: '0.38.21',
+  // CometBFT pinned in go.mod per Terra core release. CometBFT v0.38.21 still reports itself as 0.38.19,
+  // so a node's self-reported version can lag the code it actually runs.
+  cometPins: { '2.22': '0.38.21' },
   sdkPQ: '0.55.0', cometCompat: '0.38.26', cometPQ: '0.40.0',
   extraCw20: [{ symbol: 'DEEPSTATE', address: 'terra13lc4xzfmzfgds5zux5pp3zuqf665akrdzwlumnjykrt850n96lvsz5y0wg', decimals: 6 }],
   bigExit: 250000e6,
@@ -1020,7 +1023,10 @@ function originPanel() {
 /* ---------- quantum ---------- */
 function paintLadder() {
   const liveN = S.node && S.node.application_version;
-  const sdk = (liveN && liveN.cosmos_sdk_version) || CFG.staticSdk, comet = (S.node && S.node.default_node_info && S.node.default_node_info.version) || CFG.staticComet;
+  const sdk = (liveN && liveN.cosmos_sdk_version) || CFG.staticSdk;
+  let comet = (S.node && S.node.default_node_info && S.node.default_node_info.version) || CFG.staticComet, cometNote = '';
+  const pin = liveN && CFG.cometPins[(ver(liveN.version) || []).slice(0, 2).join('.')];
+  if (pin && vcmp(pin, comet) === 1) { cometNote = ' (the node reports ' + ver(comet).join('.') + ', because that CometBFT release did not update its version string)'; comet = pin; }
   $('qr-src').textContent = liveN ? 'Versions reported by ' + S.epName : 'Versions from Terra core v2.22.0 source';
   const c1 = vgte(comet, CFG.cometCompat), c2 = vgte(sdk, CFG.sdkPQ) && vgte(comet, CFG.cometPQ);
   const types = S.keyTypes, c3 = types ? types.some(t => /dsa/i.test(t)) : (c2 ? null : false);
@@ -1028,7 +1034,7 @@ function paintLadder() {
   const st = d => d == null ? pill('info', 'Needs live data') : d ? pill('ok', 'Done') : pill('warn', 'Not yet');
   const sv3 = s => (ver(s) || []).join('.');
   const steps = [
-    [c1, 'Keep cross-chain transfers working when neighbours switch', 'Terra runs CometBFT ' + sv3(comet) + '. Cosmos\'s guide says chains that verify a post-quantum chain over IBC need CometBFT 0.40, and notes a compatibility backport in 0.38.26. Terra connects to many chains, so this comes first.'],
+    [c1, 'Keep cross-chain transfers working when neighbours switch', 'Terra runs CometBFT ' + sv3(comet) + cometNote + '. Cosmos\'s guide says chains that verify a post-quantum chain over IBC need CometBFT 0.40, and notes a compatibility backport in 0.38.26. Terra connects to many chains, so this comes first.'],
     [c2, 'Upgrade to the post-quantum release', 'Terra runs Cosmos SDK ' + sv3(sdk) + '. ML-DSA keys arrive in SDK 0.55 with CometBFT 0.40. Cosmos\'s upgrade guide starts from SDK 0.53 or 0.54, so Terra has intermediate upgrades to do first.'],
     [c3, 'Allow ML-DSA validator keys', 'A chain-level setting changed through governance.' + (types ? ' Key types allowed today: ' + types.join(', ') + '.' : ' Today validators may only use ed25519.')],
     [c4, 'Two-thirds of voting power rotates to ML-DSA', share == null ? 'Measured from the live validator set.' : 'Currently ' + (100 * share).toFixed(1) + '% of voting power signs with post-quantum keys' + (v ? ' (' + v.b.length + ' validators checked).' : '.') + ' The chain\'s consensus counts as quantum-safe at 66.7%.'],
