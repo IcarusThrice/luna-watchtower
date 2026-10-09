@@ -1,0 +1,1131 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="description" content="Security watch for Terra phoenix-1: unbonding queue, restricted addresses, wallet permission checkup and quantum readiness."><style>:root{color-scheme:light}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style></head><body><title>Luna Watchtower</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one column of instrument panels under a three-tab header; summary first, detail below; night-watch palette. */
+:root {
+  --bg: #EEF0F7; --surface: #FFFFFF; --raised: #F5F6FB; --line: #DADDEA; --line-strong: #BCC2D8;
+  --ink: #141830; --ink-2: #454C6B; --ink-3: #69718F;
+  --accent: #3442B8; --on-accent: #FFFFFF;
+  --ok: #177A4E; --warn: #9A5700; --crit: #C4282F;
+  --s1: #2a78d6; --s2: #eb6834;
+  --f-display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Instrument Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0D1120; --surface: #161B2E; --raised: #1D233B; --line: #2A3150; --line-strong: #3C4570;
+    --ink: #E8EAF6; --ink-2: #B4BAD6; --ink-3: #8D96B8;
+    --accent: #AAB6FF; --on-accent: #10142A;
+    --ok: #4CC38A; --warn: #F0B33A; --crit: #FF7A7E;
+    --s1: #3987e5; --s2: #d95926;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0D1120; --surface: #161B2E; --raised: #1D233B; --line: #2A3150; --line-strong: #3C4570;
+  --ink: #E8EAF6; --ink-2: #B4BAD6; --ink-3: #8D96B8;
+  --accent: #AAB6FF; --on-accent: #10142A;
+  --ok: #4CC38A; --warn: #F0B33A; --crit: #FF7A7E;
+  --s1: #3987e5; --s2: #d95926;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--f-body); }
+.wrap { max-width: 1120px; margin-inline: auto; padding-inline: 20px; padding-block: 20px 56px; display: flex; flex-direction: column; gap: 20px; }
+a { color: var(--accent); text-underline-offset: 2px; }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+h1, h2, h3 { font-family: var(--f-display); margin: 0; text-wrap: balance; line-height: 1.15; }
+h2 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+h3 { font-size: 16px; font-weight: 700; }
+p { margin: 0; }
+.mono { font-family: var(--f-mono); font-size: 0.87em; }
+.num { font-variant-numeric: tabular-nums; }
+.muted { color: var(--ink-3); }
+.small { font-size: 13px; }
+.label { font-size: 11.5px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
+.prose { max-width: 66ch; color: var(--ink-2); }
+
+/* header */
+.top { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; justify-content: space-between; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.brand svg { flex: none; }
+.brand h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
+.brand p { font-size: 13px; color: var(--ink-3); }
+.conn { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); border: 1px solid var(--line); background: var(--surface); padding: 6px 12px; border-radius: 999px; min-width: 0; }
+.conn .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-3); flex: none; }
+.conn[data-state="live"] .dot { background: var(--ok); }
+.conn[data-state="off"] .dot { background: var(--crit); }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.tab { appearance: none; background: none; border: 0; border-bottom: 3px solid transparent; padding: 10px 14px 9px; font-family: var(--f-display); font-weight: 500; font-size: 16px; color: var(--ink-3); cursor: pointer; white-space: nowrap; }
+.tab:hover { color: var(--ink); }
+.tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 700; }
+.wing { display: flex; flex-direction: column; gap: 20px; }
+.wing-head { display: flex; flex-direction: column; gap: 6px; }
+
+/* panels */
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.panel-head { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; justify-content: space-between; }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+@media (max-width: 820px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+.banner { border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--line)); background: color-mix(in srgb, var(--warn) 9%, var(--surface)); border-radius: 10px; padding: 14px 16px; display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; }
+.banner p { max-width: 78ch; color: var(--ink-2); }
+.banner strong { color: var(--ink); }
+
+/* buttons, inputs */
+.btn { appearance: none; border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); border-radius: 8px; padding: 7px 12px; font-weight: 500; font-size: 14px; cursor: pointer; white-space: nowrap; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+.btn.tiny { padding: 3px 8px; font-size: 12.5px; border-radius: 6px; }
+.btn[disabled] { opacity: 0.55; cursor: default; }
+.field { display: flex; flex-wrap: wrap; gap: 8px; }
+.field input[type="text"], .field input[type="search"] { flex: 1 1 260px; min-width: 0; background: var(--raised); border: 1px solid var(--line-strong); border-radius: 8px; padding: 8px 12px; font-family: var(--f-mono); font-size: 13.5px; }
+.field input::placeholder { color: var(--ink-3); }
+
+/* status marks: shape + word, never colour alone */
+.pill { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 1px 8px 1px 6px; border-radius: 999px; border: 1px solid var(--line-strong); color: var(--ink-2); white-space: nowrap; }
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--ink-3); }
+.pill.crit { border-color: color-mix(in srgb, var(--crit) 55%, var(--line)); background: color-mix(in srgb, var(--crit) 11%, var(--surface)); color: var(--ink); }
+.pill.crit::before { background: var(--crit); border-radius: 1px; transform: rotate(45deg); }
+.pill.warn { border-color: color-mix(in srgb, var(--warn) 55%, var(--line)); background: color-mix(in srgb, var(--warn) 11%, var(--surface)); color: var(--ink); }
+.pill.warn::before { background: var(--warn); border-radius: 0; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.pill.ok { border-color: color-mix(in srgb, var(--ok) 55%, var(--line)); background: color-mix(in srgb, var(--ok) 10%, var(--surface)); color: var(--ink); }
+.pill.ok::before { background: var(--ok); }
+.findings { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.findings li { display: grid; grid-template-columns: 108px minmax(0, 1fr); gap: 4px 14px; padding: 11px 0; border-top: 1px solid var(--line); align-items: start; }
+.findings li:first-child { border-top: 0; padding-top: 0; }
+.findings li:last-child { padding-bottom: 0; }
+.findings li > .pill, .findings li > .label { justify-self: start; align-self: start; margin-top: 2px; }
+.findings .what { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.findings .why { display: block; min-width: 0; color: var(--ink-2); font-size: 14px; grid-column: 2; overflow-wrap: anywhere; }
+@media (max-width: 520px) { .findings li { grid-template-columns: minmax(0, 1fr); } .findings .why { grid-column: 1; } }
+
+/* readouts */
+.readouts { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); margin: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); overflow: hidden; }
+.readouts > div { padding: 12px 14px; border-left: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.readouts > div:first-child { border-left: 0; }
+.readouts dt { font-size: 11.5px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
+.readouts dd { margin: 0; }
+.readouts .v { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.25; overflow-wrap: anywhere; }
+.readouts .s { font-size: 12.5px; color: var(--ink-3); }
+@media (max-width: 940px) { .readouts { grid-template-columns: repeat(3, minmax(0, 1fr)); } .readouts > div:nth-child(4) { border-left: 0; } .readouts > div:nth-child(n+4) { border-top: 1px solid var(--line); } }
+@media (max-width: 520px) { .readouts { grid-template-columns: repeat(2, minmax(0, 1fr)); } .readouts > div { border-left: 0; border-top: 1px solid var(--line); } .readouts > div:nth-child(even) { border-left: 1px solid var(--line); } .readouts > div:nth-child(-n+2) { border-top: 0; } }
+
+/* tables */
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th { text-align: left; font-size: 11.5px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; padding: 0 12px 6px 0; white-space: nowrap; }
+td { padding: 7px 12px 7px 0; border-top: 1px solid var(--line); vertical-align: top; }
+th.r, td.r { text-align: right; font-variant-numeric: tabular-nums; }
+th:last-child, td:last-child { padding-right: 0; }
+td.addr { font-family: var(--f-mono); font-size: 12.5px; white-space: nowrap; }
+.empty { color: var(--ink-3); font-size: 14px; padding: 6px 0; }
+
+/* charts */
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; }
+.chart text { font-family: var(--f-body); font-size: 11.5px; fill: var(--ink-3); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.tip { position: absolute; pointer-events: none; background: var(--raised); border: 1px solid var(--line-strong); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; line-height: 1.45; min-width: 150px; z-index: 2; box-shadow: 0 6px 18px color-mix(in srgb, var(--ink) 14%, transparent); }
+.tip b { display: block; color: var(--ink); }
+.progress { height: 4px; border-radius: 2px; background: var(--raised); overflow: hidden; }
+.progress i { display: block; height: 100%; width: 0; background: var(--accent); transition: width 0.2s; }
+.bars { display: flex; flex-direction: column; gap: 7px; }
+.bar-row { display: grid; grid-template-columns: minmax(0, 150px) minmax(0, 1fr) 52px; gap: 10px; align-items: center; font-size: 13.5px; }
+.bar-row .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bar-row .tr { height: 12px; }
+.bar-row .tr i { display: block; height: 100%; min-width: 2px; background: var(--s1); border-radius: 0 4px 4px 0; }
+.bar-row .pc { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+details > summary { cursor: pointer; font-size: 13px; color: var(--ink-3); }
+
+/* quantum ladder */
+.ladder { list-style: none; margin: 0; padding: 0; counter-reset: step; display: flex; flex-direction: column; }
+.ladder li { counter-increment: step; display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 4px 12px; padding: 13px 0; border-top: 1px solid var(--line); align-items: start; }
+.ladder li:first-child { border-top: 0; padding-top: 0; }
+.ladder li::before { content: counter(step); font-family: var(--f-display); font-weight: 700; font-size: 16px; width: 28px; height: 28px; border-radius: 50%; border: 1.5px solid var(--line-strong); display: grid; place-items: center; color: var(--ink-2); }
+.ladder li[data-done="yes"]::before { background: var(--ok); border-color: var(--ok); color: var(--surface); }
+.ladder .t { font-weight: 600; }
+.ladder .d { grid-column: 2 / -1; color: var(--ink-2); font-size: 14px; max-width: 70ch; }
+@media (max-width: 520px) { .ladder li { grid-template-columns: 30px minmax(0, 1fr); } .ladder .pill { grid-column: 2; justify-self: start; } .ladder .d { grid-column: 2; } }
+.kv { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); gap: 6px 18px; margin: 0; font-size: 14px; }
+.kv dt { color: var(--ink-3); }
+.kv dd { margin: 0; overflow-wrap: anywhere; }
+.choices { display: flex; flex-direction: column; gap: 6px; border: 0; padding: 0; margin: 0; }
+.choices label { display: flex; gap: 8px; align-items: baseline; cursor: pointer; }
+.note { border-left: 3px solid var(--line-strong); padding: 2px 0 2px 12px; color: var(--ink-2); font-size: 14px; max-width: 70ch; }
+.cmd { font-family: var(--f-mono); font-size: 12px; background: var(--raised); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; overflow-x: auto; white-space: pre; margin: 6px 0 0; }
+footer { color: var(--ink-3); font-size: 13px; display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 16px; }
+footer p { max-width: 80ch; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <svg id="moon" width="40" height="40" viewBox="0 0 40 40" role="img" aria-label="Tonight's moon"></svg>
+      <div>
+        <h1>Luna Watchtower</h1>
+        <p>Security watch for Terra (phoenix-1). Read-only. It never asks for a recovery phrase.</p>
+      </div>
+    </div>
+    <div class="conn" id="conn" data-state="wait"><span class="dot"></span><span id="conn-text">Looking for a node…</span></div>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Sections">
+    <button class="tab" role="tab" id="tab-watch" aria-controls="wing-watch" aria-selected="true">Watchtower</button>
+    <button class="tab" role="tab" id="tab-checkup" aria-controls="wing-checkup" aria-selected="false">Checkup</button>
+    <button class="tab" role="tab" id="tab-quantum" aria-controls="wing-quantum" aria-selected="false">Quantum</button>
+  </nav>
+
+  <div class="banner" id="offline" hidden>
+    <p><strong>No live chain connection from here.</strong> If you are viewing this as a preview inside Claude, that is expected: previews block outside network requests. Opened as a normal web page, the live panels fill in. The restricted-address list, the list lookup in the checkup and the quantum reference work now.</p>
+    <button class="btn" id="retry">Try again</button>
+  </div>
+
+  <!-- WATCHTOWER -->
+  <section class="wing" id="wing-watch" role="tabpanel" aria-labelledby="tab-watch">
+    <div class="panel">
+      <div class="panel-head"><h2>Needs attention</h2><span class="small muted" id="alerts-when"></span></div>
+      <ul class="findings" id="alerts"></ul>
+    </div>
+
+    <dl class="readouts" id="readouts">
+      <div><dt>Latest block</dt><dd class="v" id="r-block">—</dd><dd class="s" id="r-block-s">waiting for a node</dd></div>
+      <div><dt>Terra core</dt><dd class="v" id="r-ver">—</dd><dd class="s" id="r-ver-s">security release is v2.22.0</dd></div>
+      <div><dt>Staked</dt><dd class="v" id="r-bond">—</dd><dd class="s" id="r-bond-s">LUNA bonded to validators</dd></div>
+      <div><dt>Unbonding</dt><dd class="v" id="r-unb">—</dd><dd class="s" id="r-unb-s">LUNA in the 21-day queue</dd></div>
+      <div><dt>Restricted</dt><dd class="v" id="r-list">—</dd><dd class="s" id="r-list-s">addresses blocked from sending</dd></div>
+      <div><dt>Votes open</dt><dd class="v" id="r-gov">—</dd><dd class="s" id="r-gov-s">governance proposals</dd></div>
+    </dl>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Unbonding queue, next 21 days</h2>
+        <span class="small muted" id="q-status">Unstaked LUNA becomes spendable 21 days after the request. Large or unusual exits show up here first.</span>
+      </div>
+      <div class="progress" id="q-progress" hidden><i></i></div>
+      <div class="legend" aria-hidden="true"><span><i style="background:var(--s2)"></i>Restricted wallets</span><span><i style="background:var(--s1)"></i>All other wallets</span></div>
+      <div class="chart" id="q-chart"></div>
+      <details id="q-table-wrap" hidden><summary>Show the daily totals as a table</summary><div class="scroll"><table id="q-table"></table></div></details>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Largest exits in the queue</h2>
+        <label class="small"><input type="checkbox" id="q-only"> Restricted wallets only</label>
+      </div>
+      <div class="scroll"><table id="q-top"></table></div>
+      <p class="empty" id="q-top-empty">Appears after the queue has been read from a node.</p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Restricted addresses</h2>
+        <span class="small muted" id="list-src"></span>
+      </div>
+      <p class="prose small">Since the v2.22.0 upgrade on October 6, 2026, these addresses cannot start transactions. Phoenix Foundation labels most of them as wallets affected by the legacy Terra Station Desktop flaw and the rest as attacker-associated. One attacker-associated entry is a Gate.io deposit address the exploiter used, which does not implicate the exchange. Funds stay at their addresses until governance decides.</p>
+      <p class="small" id="tally-sum"></p>
+      <div class="field">
+        <input type="search" id="list-q" placeholder="Search or paste a terra1 address" aria-label="Search restricted addresses" autocomplete="off" spellcheck="false">
+        <button class="btn" id="tally-all" hidden>Read balances for all affected wallets</button>
+      </div>
+      <div class="scroll"><table id="list-table"></table></div>
+      <button class="btn tiny" id="list-more" hidden style="align-self:flex-start"></button>
+    </div>
+
+    <div class="grid2">
+      <div class="panel">
+        <div class="panel-head"><h2>Validator power</h2><span class="small muted" id="val-meta"></span></div>
+        <p class="small prose" id="val-sum">How many validators it would take to stall or control the chain. Lower is riskier.</p>
+        <div class="bars" id="val-bars"></div>
+        <p class="empty" id="val-empty">Voting power appears once a node answers.</p>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Governance</h2><span class="small muted">Emergency upgrades arrive here</span></div>
+        <div class="scroll"><table id="gov-table"></table></div>
+        <p class="empty" id="gov-empty">Open and recent proposals appear once a node answers.</p>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Your watchlist</h2><span class="small muted">Saved in this browser only</span></div>
+      <div class="field">
+        <input type="text" id="watch-in" placeholder="terra1… address to keep an eye on" aria-label="Address to watch" autocomplete="off" spellcheck="false">
+        <button class="btn" id="watch-add">Add to watchlist</button>
+      </div>
+      <p class="small" id="watch-msg" role="status"></p>
+      <div class="scroll"><table id="watch-table"></table></div>
+      <p class="empty" id="watch-empty">No addresses yet. Add one to see its liquid, staked and unbonding LUNA here, and to have it flagged if it shows up in the queue or on the restricted list.</p>
+    </div>
+  </section>
+
+  <!-- CHECKUP -->
+  <section class="wing" id="wing-checkup" role="tabpanel" aria-labelledby="tab-checkup" hidden>
+    <div class="wing-head">
+      <h2>Wallet checkup</h2>
+      <p class="prose">Paste a public address. The checkup reads what the chain already shows about it: whether it is restricted, what it holds, and who else has permission to act for it. Nothing is signed and nothing is sent.</p>
+    </div>
+    <div class="panel">
+      <div class="field">
+        <input type="text" id="ck-in" placeholder="terra1…" aria-label="Wallet address" autocomplete="off" spellcheck="false">
+        <button class="btn primary" id="ck-run">Run checkup</button>
+        <button class="btn" id="ck-sample">Try a restricted address</button>
+      </div>
+      <p class="small" id="ck-msg" role="status"></p>
+    </div>
+    <div class="panel" id="ck-intro">
+      <h3>What gets checked</h3>
+      <ul class="findings">
+        <li><span class="label">List</span><span class="what">Restricted-address list</span><span class="why">Whether the address is one of the wallets blocked by the v2.22.0 upgrade.</span></li>
+        <li><span class="label">Account</span><span class="what">Account type and public key</span><span class="why">Wallet, vesting account or contract, and whether its public key is already on-chain.</span></li>
+        <li><span class="label">Holdings</span><span class="what">Liquid, staked and unbonding LUNA</span><span class="why">Including the date each unbonding becomes spendable.</span></li>
+        <li><span class="label">Authz</span><span class="what">Permissions given to other addresses</span><span class="why">Grants that let another address send, stake or run contracts as this wallet, ranked by what they allow.</span></li>
+        <li><span class="label">Fees</span><span class="what">Fee allowances</span><span class="why">Addresses allowed to spend this wallet's LUNA on transaction fees.</span></li>
+        <li><span class="label">Tokens</span><span class="what">CW20 spending allowances</span><span class="why">Contracts allowed to move this wallet's tokens, for every CW20 in the Cosmos chain registry.</span></li>
+      </ul>
+    </div>
+    <div id="ck-out" hidden class="wing"></div>
+  </section>
+
+  <!-- QUANTUM -->
+  <section class="wing" id="wing-quantum" role="tabpanel" aria-labelledby="tab-quantum" hidden>
+    <div class="wing-head">
+      <h2>Quantum readiness</h2>
+      <p class="prose">A large enough quantum computer could derive a private key from a public key. No such machine exists yet, and moving a chain to quantum-safe signatures takes years. This page tracks how far Terra has to go.</p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Terra's path to quantum-safe signatures</h2><span class="small muted" id="qr-src"></span></div>
+      <ol class="ladder" id="ladder"></ol>
+    </div>
+
+    <div class="grid2">
+      <div class="panel">
+        <h2>How close is the hardware</h2>
+        <p class="small prose">Physical qubits, on a log scale. Each step right is ten times more.</p>
+        <div class="chart" id="qubits"></div>
+        <p class="small prose">The gap between today's machines and the lowest published estimate is roughly 400 to 500 times. Google has set 2029 as the deadline for its own migration, and one 2026 study estimates a chain that starts now finishes around 2029 to 2031.</p>
+      </div>
+      <div class="panel">
+        <h2>Is an address exposed</h2>
+        <p class="small prose">An address is a hash of the public key. The key itself is published the first time the wallet signs a transaction. Until then a quantum attacker has nothing to work from.</p>
+        <div class="field">
+          <input type="text" id="qx-in" placeholder="terra1…" aria-label="Address to check for a published key" autocomplete="off" spellcheck="false">
+          <button class="btn" id="qx-run">Check the key</button>
+        </div>
+        <div id="qx-out" class="small" role="status"><span class="muted">Shows whether the public key is on-chain and which signature scheme it uses.</span></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>What a quantum computer would and would not break</h2>
+      <div class="scroll"><table>
+        <thead><tr><th>Part of the chain</th><th>Scheme today</th><th>Quantum risk</th><th>Fix</th></tr></thead>
+        <tbody>
+          <tr><td>Wallet signatures</td><td>secp256k1 (elliptic curve)</td><td><span class="pill crit">Breakable</span></td><td>ML-DSA account keys, available from Cosmos SDK 0.55</td></tr>
+          <tr><td>Validator consensus keys</td><td>ed25519 (elliptic curve)</td><td><span class="pill crit">Breakable</span></td><td>Rotate to ML-DSA; the chain is safe once two-thirds of voting power has</td></tr>
+          <tr><td>Hashes, addresses, Merkle proofs</td><td>SHA-256</td><td><span class="pill ok">Holds</span></td><td>None needed</td></tr>
+          <tr><td>Wallets that never signed</td><td>Only the address hash is public</td><td><span class="pill ok">Shielded</span></td><td>Exposed at first spend, so move to a quantum-safe key before then</td></tr>
+        </tbody>
+      </table></div>
+      <p class="small prose">ML-DSA is the lattice signature standard NIST published as FIPS 204. Its keys and signatures are larger than today's, which raises gas for signature checks and enlarges block headers.</p>
+    </div>
+
+    <div class="panel">
+      <h3>Sources</h3>
+      <ul class="small" style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px;color:var(--ink-2)">
+        <li><a href="https://cosmos.network/blog/post-quantum-ledger-security-20261" target="_blank" rel="noopener">Cosmos: Post-Quantum Ledger Security 2026.1</a></li>
+        <li><a href="https://docs.cosmos.network/sdk/latest/keys/post-quantum-keys" target="_blank" rel="noopener">Cosmos docs: Post-quantum keys</a> and <a href="https://docs.cosmos.network/sdk/latest/keys/migrate-validator-ml-dsa" target="_blank" rel="noopener">Migrate a validator to ML-DSA</a></li>
+        <li><a href="https://arxiv.org/pdf/2606.14484" target="_blank" rel="noopener">Quantum Horizon (arXiv 2606.14484)</a>: hardware figures and the range of estimates</li>
+        <li><a href="https://www.forbes.com/sites/digital-assets/2026/03/31/google-finds-quantum-computers-could-break-bitcoin-sooner-than-expected/" target="_blank" rel="noopener">Forbes on Google Quantum AI's March 2026 paper</a></li>
+        <li><a href="https://github.com/phoenix-directive/core/blob/v2.22.0/go.mod" target="_blank" rel="noopener">Terra core v2.22.0 dependency versions</a></li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>
+    <p>Built by the <a href="https://deepstateluna.com" target="_blank" rel="noopener">Deep State Luna</a> validator for everyone on Terra. Chain data comes straight from public phoenix-1 REST nodes; the restricted list comes from <a href="https://github.com/phoenix-directive/core/blob/v2.22.0/app/ante/blacklist/blacklist.go" target="_blank" rel="noopener">Terra core</a>; incident details from <a href="https://medium.com/@PhoenixDirective/preliminary-incident-report-legacy-terra-station-desktop-wallet-compromise-9657c4de1dbd" target="_blank" rel="noopener">Phoenix Foundation's report</a>.</p>
+    <p>Not yet tracked: cross-chain (IBC) outflows, contract admin changes, and alerts sent to you while this page is closed. Those need a small indexer and are next.</p>
+  </footer>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+const CFG = {
+  endpoints: [
+    ['publicnode', 'https://terra-rest.publicnode.com'],
+    ['Polkachu', 'https://terra-api.polkachu.com'],
+    ['Stakeflow', 'https://api-terra-01.stakeflow.io'],
+    ['High Stakes', 'https://terra-phoenix-api.highstakes.ch'],
+    ['Mesh', 'https://terra2-api.meshrpc.com'],
+    ['Chainroot', 'https://terra-api.chainroot.io'],
+  ],
+  listRaw: 'https://raw.githubusercontent.com/phoenix-directive/core/release/v2.22/app/ante/blacklist/blacklist.go',
+  assetlist: 'https://raw.githubusercontent.com/cosmos/chain-registry/master/terra2/assetlist.json',
+  explorer: 'https://www.mintscan.io/terra',
+  secureVersion: '2.22.0',
+  // Terra core v2.22.0 go.mod, used when no node answers
+  staticSdk: '0.50.15', staticComet: '0.38.21',
+  sdkPQ: '0.55.0', cometCompat: '0.38.26', cometPQ: '0.40.0',
+  extraCw20: [{ symbol: 'DEEPSTATE', address: 'terra13lc4xzfmzfgds5zux5pp3zuqf665akrdzwlumnjykrt850n96lvsz5y0wg', decimals: 6 }],
+  bigExit: 250000e6,
+};
+const BUNDLED = {"v":["terra1kvwkvurw4xexw69ef772p95jajnjjjsq6d5uca","terra1r0kyl9k9apsd5rp8qvjnda2prg76d4e6s8zymg","terra1x04xgtwlw72gtfzrq7nfwmr6eexla8ecljw28z","terra10pa0qv7mrqst053zhv9hxxt9mwhmr45ggguygs","terra10nxpnrcm78rlevvt28ztucwf6xcqts26yj4vfl","terra1tvshfczvr9lgp9aytwjdhclmgsdkr4gqnxugpe","terra1dt5deezcgv2mzxlhksqghv5x35yy3sapepl0t2","terra12v9ltjgct6qsaw28j5m26z7ruprhxywkmjfspk","terra1tz9gyy75ucws9fqfx282h3syvvy43lflg686qg","terra1a4xyusa48u9cx678cvx23jajh4ca6v8ec2pguu","terra16g7thcqtqkg6x42kej34r2kzhnl8ghvp2j4d4m","terra1akqq32nm6x545htxejp5dh5tvdtmk987tnnaqk","terra1g6054czmwvle0rahwazkdpmtllyfyhnvjr94hn","terra1760w9ckqt5xh4urs235vm27xxkdwgeunay06v3","terra188c33gkknt3njnrkzunfz0fudjfn3hrr4jgure","terra13huy6a34qj2mza2c2cntq95vg93u8x9aag5c6s","terra16gymuk00l9684ctz5dzqtgrgqywyf7hz8pfr87","terra1taevkzkdw3vw2cemhgxnvwc8yl5753pgsvxxz3","terra1rksuz09vqfgrax2ryyadsy2xrqwzj8j5d275am","terra1n79knz98spcfxt5g0hmc4vcmw8lhmw0v4nssyv","terra1a7lrn0h92vy9t3jxnll5ad022xaf5tcapt7azf","terra13y0vz2a9mygluaasmel6kafxmxlkneygp4344f","terra1g4a7fhwt6cft2myf3fne7vw5tfdkvyh95d3an6","terra19l4n2nn563zdg2rhqy0yjg3fm6hw22ntnzzmnk","terra1u7vg8crqf09xwjya6d5q4e66tfxe48arl69nz5","terra1q0nnd3zuz7aexzdmy8guv4kmc98mmjmhntjarx","terra17vw4q8pr8k22yuc9q7m8fmxud8s8dpkvncfpg8","terra1xpart34e6wmkhscyj58npm0xeerew77jgh7mc0","terra13zua9z2gtp0sl4tf236eykculdg6k8l7nj39nc","terra1kwawc69v6th5aucmj3g4r5njhkk6mgyrn8un9g","terra1fkgfwcd0an2cgk8yyh7jnx35waxapjzf75egd4","terra1r2k9v7regc3e94636e2rcxkejuf6dfyt4ulz7p","terra19cyjvyhtrvvqmwu830gf5xws0tvqapx92yvy26","terra1ucuecygdq28jvapdydj7awef4ka80xgzhx9dfv","terra1qvp7pv8k80yrw4kcywz2ujhxmu35aak8xnvr4a","terra1c7ume8f0aq7kdzl2yltpl25yn6cv6rkxaaq4pj","terra19k4kqjqwj530wtpmwwpfd2q6kl3v9tl2jp2dff","terra1zmrr3h8s8cptk3rtqxw45fxvvftqsxwh2kdy85","terra1k86y2pedv6hzhtr5d7pgy7frsc27n5quc6tqyq","terra1nv4zxl07s5cnja3aljs5a5xgczwcyrygt56dm5","terra1jefyjcyrurn83edjvjj8vqncv3mdv9pgrwnhkh","terra1j4va7q245mu9cs0ls8v7wgk4yvncj5cwn8cetp","terra1ycx5jee4f4tkkse45x8qhvnu8hmk4kt25d3p2v","terra1gpw0kxu45rl3uaj6qtv4k7xntazk89uvag49sp","terra1pc3vp2ua6rxyp0eycyhmc0zdsmyknf22r8tvds","terra136fcgj0xw6dgmf85w44tyzc560tytlr20sfnax","terra1fqgwjedr6wc63f5hasmurzc7kfqe6zqjz2ets7","terra1hke2efh926ees978cf229e2qra3yjcacrye8ay","terra1q332a4mn7v72hfkd6lfu5awhzmv7uxefhz4l2s","terra1mrzrpmdcxdw3ydzgpugxkca7ds7lzrl32dnyrr","terra1fzyp2j2zvtaapzmpxjklyy4ss7tc894qzl3dm3","terra17pl6mgedyy448ynvupkhz5yvfflqxszhtx9vja","terra1f2hswusq0zfwzj2mr9xvy443744mvkxxqyp6kj","terra19afgrt5c5xxphcx08p7qnvc4v764n07w46vwt7","terra1p908f42jr2us7yxdsmjfhcw033rl9awah5wfk3","terra1aamhc54nxyf0y7dmnu3ly8m83sdcj8pge645yd","terra1p0mglpkuv06a7xryrxlg707nlzhlj0pvr3trz7","terra1tyj09ulfgpr5m7xx0hmp3qk4qylld8dmcctkk8","terra15qglzdgl7598wkg353f5x8yag4q2xa0xdaqq32","terra1krvdnpgndl9e00w5vfs7avg9gff9c4qzj03e5t","terra1cpevlen8hnzg7ndhgywenqmkl2wpk08l58nlcs","terra1ld3nkdackd6nhlr3s3mp45e5zh52yk2fytcy9t","terra1mzcd2weugnce5fzdlkmqnjsrzv4hewa9vv2kqk","terra1lvw2kay4mj33zaej0m6grdqhu4yg98hujwdf26","terra132hzuh98s7utegmvdleznr0kvx9cspkqhzg8xs","terra1sgaastm2whl47m7kyepre9qu762qekj9sllpzy","terra1v5dqd8fdck68tlqveulqwctdctrcl59ydyrem2","terra1qd3nesm6weghwu9yhwq6wj85ux25e9w9k0f545","terra1kkcaw5h5c0mvy62fpzr0wry5mz6hjqppcfejpy","terra16tmh6k508x47l9kq437jyev33tn3t2mm2txqnf","terra1krk02jgfjd490tn8xewnd7erp935f94sejrwtc","terra1np5l2y7y2jm5sdl2hklyjx0wm4swhmyufwfju9","terra1yqk4e4e9mx6gyg094sfzq6n8tmzkz956kxc8td","terra1amghnkxp2yzyaenvs0s7dedr9seyfa8yaq7qtw","terra1hwyv80p8arn9ueh2209lmadgsyd6ypcvps2pnz","terra18tk7yvad335nku0632kvx8l8jdfqa9pk0q5yma","terra1r6lhgtt6kppx7us0e2wgejpqhqx4ke58ck4n2e","terra1gvj2jayujddtl9e8jewmlcg84mansljf4ztvrf","terra17ne9tgk0fatdth272q3n0zkdcrtzagppg9cs7x","terra1d8272ztwut28xmjtzrhlu739xpp0g8j4fad2f4","terra1ndzjar24ny8aglgc7lfxu9reqs5mjj0vw9cyqg","terra1w35qlfw0dhjthzkprwzr62cthedtyps0lqelk3","terra1g7dvv3jwf8jr570t795274nc9e9x4rs6m58vfw","terra1z2x363rk5v8sh3gp8hes03ket7j065rj2qedfu","terra1y5n6ft9pdhc4uj8jz52rxwc2d88aqj9zndeqy2","terra1udh25l49ayex99qkllrlsvynmxmslz8vfkmzgy","terra1zpx4uarrvxet8twwphhcsz64e3ej8j2awjplwu","terra13h0cyduynpnpwy34de8c5ul8zqt7jfdsj527wn","terra1q0rsxwpcle05dxxmhx9mxpz4w4q3nxvz0chwl7","terra19fvmg86y8tjj8uu2zt2fkdv4amtmlafnk8p246","terra1859dahah57cf25h2guanplkll4h8n3zx5ume5w","terra1hu3k34run2xshnfjwys48yg9235sagm86erjnv","terra1xpgp7d4jh2jnguu7z75fgy4tgytclyu6zhk8z2","terra1639vclutk4vtpj6thr308em6pwslu9phgmm7yg","terra1rk3tfrr9d2rfq2x5njaugupdsg34nqaefp54ct","terra1sg4utsjq06e0ffjzs3q9muuj9yhk6j2h6ftf2f","terra1fqrcjukm2y7n9p39khsmkvlxhgmd9jh4aypy7h","terra1jhu72gzknscd82kwsw5hv6uxy5au3xvalyq4h0","terra1hxmjzfmesvn7zqehf54h2t09vt5w7prgp0xxrh","terra1t6v99t29q2hfg2w7j3ejf8fm2eea6wvpzwgmph","terra1wa6ndfa47e05r9t225fyx5upnwzlwum3u97d52","terra1wxk8t6ah9ncxe3f8emu2l4qnzw4e8c8dfs0wvn","terra1uww7g5xrwla4z5q5kfygxc0sq4h5z4tmh3pq6v","terra1uxnwyguqa2l6y4m5lljpjrag7yfapj02dt34jv","terra1wvf24j8vsreacxfqh66y5cw5h7tqkpzdrt0442","terra15g2jaw4dqm40j6hqgegn374xu79awxlypae9fk","terra1hc4fgpjrvrq0x5eknzphju5m2y65s0mfscse9n","terra1ryhrl2urlyz9kmrux8u5zhcrwdjvgn5wq4ngth","terra1kp0drnsxgepvhg5m8ae50e4j46lzd06n895xup","terra1zexg70f4vy4e5uue2hstkuadyjhmk89njplv42","terra189kmsde6ma56unlmcdzx94dh6u06evpr3e4q8v","terra1ydaxacuketkdkaek4crh76wc3n6g6ajedey04m","terra1sxc9d6lqsx2f2fay6t8d7pcvhe350v90r8xy2v","terra1c496xpwahz580kq4a29vvlsll02zsecpep9pqe","terra1p8hrlx9aencsv2k97yurxh2uekq78kr0kztump","terra12hhsdw2hgz0sma6drgumuzp8c8sqp6l569h039","terra1ku0rlgyt4rja9pr26jshk9hgyxvkj862ka384z","terra1jlw9ww2340yqds3z7lda0eyl06qjcd96xlra87","terra1nek9h0pudhfzvmupz7n0chuc3892pr69uu0qsy","terra1lh3n5petsv23tqaqvfpl6vcezxmepwgt9shy6l","terra1ksars4g4tuns78zkhfjjgpptzq2p0ugzuq24v8","terra1nh5slclnumjq633cj2l0yk8rgarw74f9wrcjy9","terra1fmcvhwv7d0zfmhr0q3ka2gdrldgfud2fdtz5hz","terra1fqawxd4wj8qnapagrzktcnrquasegxk8c6czuh","terra1pc6ytgynrlglv5unn9t93u73gmt4ghvcrlqq2q","terra1pph885lz8dnqqx0urldruu5wu4eq5p6anv8f0n","terra1466n83xsavxx38s3qqvvvmd5v5kshs3u4q97jj","terra1jle50chkt420pd3p4eykmhwfpx0gvy4s4vxd06","terra1umj44wnalve4r5y9xqyj44y0e8rz6l3kjvs4f4","terra1847ngg9dhfzlnpl54ur3w2qq9g6cvjg4ft00qz","terra1uwvsqvu4mtg4agy4a6lfqqyp4g3mzzhn9qkhnp","terra1kaw3p0ruf8gu6mmemvmnrexsjhvv8yqhez0f46","terra18szdv3rcmujnnjqams8v5vqlt9spwdcn79z6pd","terra1xa0x6jm482vfq8cs9rn6era7c765jvhf8t6rk8","terra18yhlwvluchs2qlz56jmvfpykyd3uk06h64ms4g","terra1ck3fuacu9p6m5df6gvpygzzzuxn2rmrg7m266k","terra1kn5pxutawn9hs8xu62vynwn0ls4rht4c06ty98","terra1k3c6v4v8atd3rw8s47yljtwy634czareg2g406","terra1jx2dvsxxldl8d2jgc3zpx78ew7kcnkt2mfygh7","terra1xucjm00ncvvstz56c24089wkdppnqe56934vvp","terra1fhw0cp5sqxgfm4munpne9s3wy8t3aqcpmen5wt","terra170e4xmv465phgd7zdt7z5fls72z6cw5zywg08z","terra1fezvfgr8qxnsvfc0fwguy2plqlkxf8fjx82m6s","terra1g8tk6e5nrjl2ktc5cj8p4q3tfpfpxdrzn40ja2","terra1f2fz3wujnxme549pjcwtpuea4cxjnvvr87cs48","terra1jgt4pehhpfe4u527u3d284ryste7w6t85lld0v","terra17mze6anr5zjk73ex7p4w4am676e6hh4mqlasn9","terra1uwqx4sed8xt2cm9mx8hxz5h6s5npx5qd8nwevu","terra1pxydsja6zq4s8ksmwwpg5kpspz3lm0ywtl00hq","terra1vs5gjqfrgnnkyyqse4prlfv06mvpt2xjedxxt6","terra13v8smtad7jx89hv4fjj5j3aq5t9dmvpm3u8l48","terra145vf3mahrhcqqdjtz8lmlt4nttl2rlrht6vpt4","terra1yyl05auetr8alnwen53e8qdf53js8seyeff9hx","terra1nz6p3jastsgplgl4j9smc7hhj9x4ucz5mdzxnk","terra1t2qc8hpjyhraark5wd0phxthzt3tpzn3mwksar","terra1ua2gkk7jfw3u4kcjsrayytl4xm8nsz0rmveky0","terra1hv40yrhsqp7pa8cuqxvks38ujtl3hg785n6yzk","terra17ysnpmndwa3xqhd4g8d9fzkan8mjc8hn7aa3r8","terra1n62r7q4xjnv252pf90peqr87fptsk9x3a9wp3l","terra13he6hrl95nugnapvvw4aeudul842zd6zkdvf4g","terra1r0dqhyfhe2mqrahmwx36tlksyk63c5pkr89sva","terra1nt2kjm3avdnadusaltjk88ahzj9j7w3nwsusf8","terra1lz30qss93c4c6r9zy345r6dep589plrxj5fpdm","terra106gvdpvt28jrq27u5uap44ynv8zc44p55uwhe2","terra1tus73uwd247nj6qegadzyyzf99nh56w4mfza7l","terra1vc4khq3q4mdpjr67rrj045qzqh5nax9vqydfxe","terra156vjv2679u3gk6zk02hn7z6svy48r4fy26yrt2","terra1uevu5ell48k523pzc0u0wxnx30yuqcmx7suh2k","terra192z3zuahqjcepduw3lw7zfpw8g7wfm48yalmzz","terra1gdpe8xq8evjfeujfdrq9gxa4x030q9jgp8wysf","terra1y38yhzdq82lukupll0d5vz2tsgwtlhk8zykvzx","terra18jceq4g0cpa29xwwwfv5kgsqlgmnl0339wwaul","terra12p7jt7y0reuwwuuj2rp6kupp87f8l58t7kugtz","terra147r6cvh8267q7xhsu4almuhlm3v4v0p7eucuea","terra1upsyzmjvv8flatteadymxjm6pgwu6rhp7qpav9","terra13k5y7hv6pq4qqju6d5e4v0vqmpcg2nx825m4qt","terra12gyxs377jde8l7u6tgd3yde5m0dkd4lralafu4","terra1lplr6kyzzlj4r2tdr3zqeyeau90ew5ldemgk8z","terra1l4qkmkes2mlrmxmpv4cvckk84r7edry8nmnfuu","terra1j48hty4smvr8euc2zvh9ac6crupsehyhwcld9t","terra1fhdwpwc0vquxnc749vzn208e9szdtx2h5f2j00","terra1vafdle2e7yhvp8xjzxphsu9kx8v2pw67p5ll9e","terra1t7nzal75ze3tqp0p6ft67dy5vuv440lyekhfzv","terra1wd9mhx2ayt5537wf0n45gjss7pet0kwkdpucf8","terra1az87zsectqlfhhxg6c8haumx9uy52eyxzadk3x","terra1c6mmng09thtfatrd27yc956qz0q072hh59smc3","terra10zqnl8s79qv5yepfltwmcjj0puklqtvw329ztl","terra1qdxnactvgunsq6dfhtdrga78kfqfnmyzmmf5tw","terra1ndykpj7pfdw4tt7emrxkslm2n7uzm3x48w7mye","terra1lud06ncqkcxvqel9sfhl4fe36ggchrnecqs6ke","terra19u5293x0k3fytkm0u3prpw900xwznyuxrmvy4d","terra1y9l5tlnmwcapalar2xd68e82dtgmtwyv7jznn7","terra1p8hl7c0la6lctnyv8canm23f0tllf0cp7wxap3","terra14rqplnrly6p0lsjzkup07gskkxt6sa2aerlp90","terra1k92w68a3p0gml6tnglryzvm7v46n86jg47g9fy","terra1nywja8qykzgcva579tyuarglyv9dc75y8cyw3f","terra1jx34m702y0g5ghm6fw7yh38dhkslnvrujqpvdy","terra1r0x9vrzn8dlurrv2ra4e8agevf3slsnzgnzel5","terra1ztw0f6yv099ve9y68cfha7wc70jvz6c4xpctwt","terra1u4zd4g6ts025m6mjy6zqtrcrsy46mkp5almenw","terra15eju8a5zhq04zpxnhze28979ktyj582eg4hzjf","terra1mv020gvclle57qjadv3wcuurwm2w44tye7znl5","terra12rphj3mpuhu6e4a9gpxferaztp787w8fvvkl5h","terra1rgtapknej3kqauuzfjjfkxp8xr6nql2drwe7da","terra1jzzntf7z5a6jtcamp7edms4ysw5vmrx6lslsk6","terra1xffapzxaq57grae9nx5ly38lg2gk2j4epxnwq8","terra19drnr8r8uvkw6z9mn38xj40f9g7dyyku8ndc0j","terra1d3rwfaxtrkpfy7hj6hqnvc6akcn455nwprzler","terra188nwmumfd7puk63yyer6204a0ncs40qjzq4mdw","terra16809q0aj5zr49xh0e688cefge64ts95ewzrdc5","terra137uwjw8wgu80qpz33r954dgasthtsreezzhjuk","terra1vgygh9vytfx4dfus5tltxv6d4xnrkhsy9p90x5","terra1jdpcf3r4238z3rtmyfqvqsmryywm7c64cu8eax","terra1zpwt0qq8nwfdjs6satufc93ztjfnvck3szha8u","terra15zmjvplx6twm8nrvmg3xz6qcqvl8rgncxnjdw5","terra13d2ewaj7ajdd5sn5q3x8uh2j9dg23peqjkjet0","terra1c42e3sp9ynfm56tdrccqku9zgymzh4kjgzh229","terra1vxawyk2ewxysxldu0x3p8xw7974p97uvftqccv","terra1qreryuj7ernp7cl38504vyl20de3uj2tfjg84e","terra1p52uds89u2r65wg66s9x27y0c25suk4xydgpp0","terra1243u940c56rpl9q85enfsxdk8uxfl72805uzh5","terra1p9hujqrtsfmcme8x84qptnurcc3fmlvs5ez9kn","terra1adcfwdu9429d97y7k4fj4lygtr0g5l75ckrsa7","terra1hm7u5rpafy64lpz2gya4uykdqxjrlpl0svcjgl","terra1cuu4q5fdpaxuwxqxkl7vzvld0msj6k0q2r9urw","terra15xmk9gnt867p39y2np9w34uxa58gal4h97sewc","terra1cws9l6jk3aslh5rqjkzcc7532qwg93ec8jg9j6","terra1rc4ltl3a2lamwrmnd9xge4unstk2p8fvs7kpjd","terra1lrnfvkne2l2nxa20963u6ag26m5cvzhs9wfhru","terra1026qm40cwyg32qhhsx923lkxvzm7eynjwv8mza","terra103ra79dl2un2ltknhyz7crm5y29g4vhmyh9nuk","terra1rdvx0c9hnfeyxc3cwt4nhtylcnm4ttx6wu6wrp","terra1wk29zk9alhg8qjngqtj83g68xhsxrx89pdtke4","terra14he8dj2rw9eu9v7kkmrzewrnduu9tpmrpn0zjj","terra1ru8ckf5e3ufpupu9l7t9fg44vqxg69fgt6dj6d","terra1pu6e63d3rd7k3j29zd9v2d3r37z7mulawq4k88","terra1ge7cl3ta85l0g9xz0thknmlenu0wtd5qr9nrfs","terra1esfyfxqtpeyhgqn7z780hslnavjsj65sktq4xe","terra1ndp0e0udcl8p05st25t03q976uagp7wsn00dly","terra1kkez97emjcndk2j7jt4srruzgrp30x0tjhvf8r","terra1grvypdd2p79swxyznenngenmsapfhp39rxjpuj","terra1drg0w8len8vwrd30luwsp6rld8wcpk8cjsshm8","terra1wj0aqr2x9qe8leje5wwkhv9p2fg7hzjwu9uj0a","terra103usrxxz8tedl3lphhf250s22xr836jxap7kfa","terra154mux25dply66hyeag4dzra636hf55q8m2v8w9","terra1h5rc3nhk99t447m6546eg7mlrva7s6ye5zs5jc","terra1a89hu63z478ra9eefyntunkg7sed5t437drr8r","terra1sujsalpvuq09vhey52xgxmnw3axarwew8zgr86","terra14ums9ud62tqf9l6ytslu55w6f78acvzzn39qny","terra1r0shju4emnmlyseymlntqauz54w9ckfnhu6ja7","terra1jc79v52k4q5ypuwdyk020clj3fpcvahn97s4yy","terra1q8yyzed5432zw8qqtfl0zc6qrgc84q8n429u0y","terra1tswwm5hu50kmjx4ul7fz3aglec446xxv20ta7j","terra1pe9gxszyrmrqjfj5gngds672de93h6zf9pyf9t","terra1est7pkfyycwvxketz2c9nh6gqkf6vu74ljtqwe","terra1j4x0r9rl9ppkkhn2u5tfvdmp4ms8wup7gs04ld","terra1f3c8z93eyznr4pg4sq22kt2z2k6dkxhfw3edtu","terra169hpn0fr2tf5un4rknndttncveshqkkq3yp6x8","terra1rvgdarl4gz33qtkhm3r0u0vh2xsfsdsfm5yprd","terra1ddpuzl4x00mmd2pq9f9pwl0dp9qc8rphakypff","terra1h8atyz9derq3enue2gqhgxlptd2krm0vm9kwvs","terra1fh6e62vagqpjkhg465yx8h4226chklsc5kqrt0","terra1ecglqs8zn4cuglqp78dc0suynzanue0ga3nj4n","terra18w2mxw4mq8dv86dcpesghflus54aul6mzrwutl","terra177k47d0czu2h8wg307amlken7q672ccd3h3hyq","terra15h3alfgw8d0wq6ysufrwthrlhgxefxnly9r70m","terra14h853rvlsemv9pkuhjke7yry6mry4yh0rkuhcd","terra1vmdkcmt0mg7x0lhv3ls7v29km4w66upf04wpkr","terra1m3tnq5rlhrhytzg50vtj0mykf9vnfk3hqj7sr2","terra1dcaxl9zqxzrfzqexler2jsv2mphdq60k77evxe","terra12fqcax6ukq9cfnqml3yenxka8ahmwy7zhe66e0","terra1heqm272p9u2nkrea3cttps3xe0t2lqwul8gvzz","terra1t6wphl9snmflj30ernt59uxl68nms6jfua5v0s","terra1r502l89gmk2tdwz3xmk8d4kgutgcnz3nely7qe","terra1lm536xtz6ynenatpw3x8t6ane7xqd2qdmdaqw4","terra1sty6xykusmtm08k46e9usm9sssye6zzpztdalg","terra1htvl5c3p7g4rmatl0r30n9zu285jsffh4pcss7","terra1z6y8lz9pn93m6ekn89v2t2x0pm9expngv6sq5l","terra17j8v8a5hgp07kkyxrdjklkx02c7uhzphmxz6xv","terra1pwdvj573c9vrfkuh9ueypdkpuzejn9qt3vjcju","terra167wh8lwl63qhl2rsqpkya3xyvvwcesy3lavrwg","terra12h6ukm2e5t679cndyw249gvapnhkmz4k4jjmwz","terra1w5kkc4he8xzqewdc0xmj8gq0wwsush2y89wxm5","terra1xuuxtm38aj54juz8wln35fpzy4j6xu8n9d76rq","terra14wzpp09huthk3jc8hqpknkm0jqjrxfm97ag2f9","terra16gurc6zr3gvpngusnkh0urs64fh9hc0q34pynr","terra1zqv7nkpdkn09dt89xj3zxvu3frd9r0eummrg92","terra1l3j06ve5k6g0sazhsu96ngl76d2msdagfrlg77","terra1ru034204p8mca3kwzx8kdcn4vmdrxkrw8mpcl3","terra17egpwu94m7763rf7vg2y3evyfygwl82qtqaehc","terra1zqj4ecjy3d8hy9xs0c7kws76vkfh3nf00anx0v","terra1atnqawfeg09ym0nkldjlqmcvssnsdm4r4r2jzk","terra16pmh8d6jz82pzjn4ssfeap3uww97h68d0g89tk","terra16j88z3dl48lktvzddkr0uzmcgtyqxh76hwdxwv","terra1hvdspxrhdmazv8fqm03049artr48e4mlz9aapw","terra1ct3zap8l7z7afj4tewwk8pengtqupsge5hsnem","terra1a6jjy63ycq75p0nnf3xrrnecmlxy6ltm3qncr3","terra1kdef0fwfyqwe6pl22aze0yvkkprpl7q7a256m2","terra14m8unq627j97ysf8k0vlm6nukuwx5wd0zt7q5m","terra1z3skwf6sk8upsj25rannsmyevreg2tg0w6uey6","terra1qjdckuj44jh60zdlam9d4ld0wwkuv0rk742ect","terra1fs03yqxa96gmca0ut0pc7l694n94p086h0x34r","terra1t5cster2amkt644g9wc2yck8gqk9394qgptc68","terra17yxt53q64u85cepkcxa8tf84csqrl99j0uge6v","terra1fl4g4hugsrsgca75jmym4hdp5nf2edvpe7wdhc","terra1jumfgsyf788uclzju0xk9tmvdh60k993ljhm8p","terra1pwp6ngdkgws2qemx423kn0mxgkgng56pxvh2am","terra129svdvqlntq2mcklwzkncjzdm4lnstqs5lpqma","terra18ag8tjt4kj6qzzhsagq2n3nqs2amlykuwz90mq","terra1ttgwj8emn08adtsj37wudnxne5jkqshx302h3p","terra1yujmhgv9lutp5ffekf0mnv9afyqpyuufysv7cs","terra1hul762jhf0fzxmzwwjnt5ye398h90fwjav2602","terra1wqsljzwltnng64xgajh7dpadhngajh6zkrg8qd","terra17v7v4g2cdjmqxj9jc284zphse3kw43rlwn4d9m","terra1akpz8efgy55c8amt6fjkh90m2zenmzmwgywcux","terra10ts9muxs8epka9uh0fraldg8m7a3h08vpg6uvs","terra1q74dhv0a9adppvw85sg8whjfc8nx9sk0hknayt","terra1k739mdg25r0chpufhu7ga56lj9zu59jhqad0d6","terra1mvqz4tlcm24zrmccxpekgh8kxwpff85msv6nmj","terra158emqhvlv6ft9qh6j2sqk9whssx0ept9j8de7w","terra1cd56jzvg58dgw5zdj5k8upjs7fwk6q3wwh2sy9","terra1s7wkcrjjt33sm45u5x5uxs2z7pdugv0kes47ya","terra13prcf2q936takv75x5g7fnkczq7m2s5efgsswp","terra1k39fz62jerndn7d2m22y48up27h0jg9krjeqts","terra1at435vrq82njp8xdnktg6emnrtysefe0dts0aa","terra1fmlqg5m38juf9nfe5amuwjlqv8h84xqhsajk3s","terra1fg85pg27p6g8wz9s6nn5crayqklmnj56q9l9dj","terra1vg4tp9vetnjg9shsxrcqmjrtswwf4ewtu40rcu","terra15efhuneetf4w7j92rnftgetq98am2dxkeh8vhh","terra1zdh7ucs89leyv2vxvyqpwxgmr4jayw8z7hsre6","terra1rmt59lnh55dysl3vrqw3j8z3l2nm2lj7kc975r","terra1st4v5tyg7e8phqtzgue2ljfcpk5axu0sn56dfv","terra1nla6my64emjvdejvd060wa9rjlw4j637ymu0c9","terra1v0y4qafhxzjv7le6stnzfhflu3agvdllmcnwnr","terra19g6dkdkjjavl8j39ud8fwm7wunqxk7yju6elna","terra1685qe3cjwjzn5vmysvjcgupqhfdv5xywpcc3r9","terra1u5gwgzres6jmvmg4q69nkd93zmwxxtcfynvmf9","terra1ls85fkmjzdqj7avmpmc27xpvca806jp5sdepx2","terra17j3ygjr43slvwu8sq6zn9x69psmfzh7aykzpe9","terra1gjnrxkd6tc2d9dr0a4fryzq99hwds570pmnw7a","terra1q3996m2fx8r9ywnke3fk5rzawzl5dd4g4jgapq","terra1qhxpsds2tlr2wrq864w40qutd9f9puz9gukrq5","terra1mlnrqj0p6agnc638496d26wgtqe4yfrzsg6rfm","terra17cxvggu06f6p2flv9rnkmmgx3nr7teyjrfqysd","terra1c9hs668ee4rk5nacx2tygd3tgv0a9ph28zt4w0","terra1ymkvtv4u29a3egazpyn3c2049q20t6qzyt66xa","terra175uue3ztzdemameswa7dpu60asrauzc8u08kmn","terra1fywalygs37vcsrcm4c224n4ltt8mhwzyx4ts47","terra14kju49xmac6jm5gllncuf0jc36ds08afwz4r2d","terra1wrre425dtpwhr6j9rt8hnqjjs2l30zm82h03vg","terra19yhkvrrxrkmkktnux827phkc43rmpqfyy7nqd6","terra1flz89pkz5xsrlnxn3vjayhplvlfygnummdkr3e","terra1ldff05jhweptzyae32gmaxse2uufkl3l3qv028","terra1c5rzn6q9u5sjqju8d3m8jxmd0nkdj39eg8h2en","terra156h3w29vp82j8z67hw64zamljjvk8qgcjsp0l3","terra1uhlfvq7sq30mfgygjz5nrtffdjgcxmmn3g2xyh","terra1kgp3c7cf0pr8esypfe5jx8p5yf7eju0hx8wrm8","terra1v4cmzdx0vpjhd4snher9zg86k2pcsn3lymqfcx","terra12fg45a60gyv5hnt2wzry3m0at4enk4y9rhsauh","terra1t09f386rauta4vdq7ujqfkgvnevycfgcnjgjeq","terra19quq95fwakn0s8zegc5ah0q4ut4yzplq3kzjy4","terra1pjxtkrzp7na6z2ddfgmgf65z8e33cc69wzl39m","terra1u22j98d5095dkpuu432ew460smrzjjkha9mry8","terra1mff8zqxruphjsp96th9k7eehvn6z6j00lm8gpe","terra1sa7c3jqlee3e6phh4ld2pk79kd87as5thdkl2l","terra1u4emgdrcr0mdyykde6jx62fpzhaaugjrhxfn6p","terra10d4zw22qzpwrtnj0fh8tpqgs6jxnkenzj4k7kc","terra1j4cmq425xmg6ryl7fhc5jr2xjeyd536fdx97jj","terra10nu2a4qvy045jj4gy2tn2z49pnt3vw0qw8tats","terra12qeqrw3jk5z45kzz8gr5kp6jgj02szxewy2ps8","terra1v4h6vprm59ktvtj0xu7wvz53jg6ar6rdcsx9pf","terra1wvkkrpxk73kqnz882fettz3nq8lwymx50wq87w","terra19v2wzwxeay8acl0g5rh0q48c70r9escf62a7uz","terra1dqvh6aynx6q0mxuatd3apderrx9uq4p9qf8rjt","terra1nvsz3lhj68nmmcp3t23gc8c2fjpeeyy7lqyt3j","terra1xaxrgfk5j5z7tqtpngwyfjpeeq8t3el37y29ef","terra1veez3f3mgm27se3dj55k037ykvzmdy08smaztp","terra1nat3ewjhrht3qu4hmzymazdfzw34zx5jh674xq","terra1myr6237pnzghcpuk9zmxtvld3ndkrnyk0y2ex8","terra19nekp9vnnjq28n4t4lydmfctunmhdnvaz0hv86","terra1qme2ehhdkc3j665dcq4l2xp4qcztl3wg6lej4y","terra1yazda3hv6hk7y53m4nj5e9eqpnrmavcrktcs73","terra1qr3dx4qh7xsewkkg80e6ehq295fv6upsk7w7x4","terra16se22xlfp3zz53ateqqtja3ut2h9r9z9vwf0nk","terra1aewek4geun6hj9zs6tasd3khzjld58vgkn6dhe","terra1q0rn233yyqttx8ftnwal4v9yljwd4008a3fy08","terra1mrxlx2pxya49lhklgy9kr5lwx0x2t7c9j0rgh7","terra1raupnyvhc7nj0ar02w3q8gp7q0nnjakh608syv","terra15xp3e8zq5f2wdswhev40u0k2k0wf9mv6g50fs2","terra10qu3zracgv4qvewejrj0xr3nfuc88x8k2nzwx8","terra1dp8lncleunqqxj62xz95nd0lvjzjf7kzkagzv5","terra1gvrggs8rukmg37p35mp773mrvfeklhwwa57x0j","terra1a49p6c4pn3t5ut87gtwg6vw7pvwgjszagte8g8","terra1f5hyt3tjjwe0xvrlnd0d9znrd9wqyezcjzl39u","terra1gg6tp85tdku6nq347ak3gzcpm7w6ehteyf6z36","terra1wuy7ywvwxccmh6xc4y2j75m64wfgq4ds07qz22","terra1r90qju3602j3y5qy7q966xjnuzff4mhs6zl2xh","terra140q9vp3e2gzmkxwjam2vfdl03rpjcrm57zv5ta","terra1uwjf55qayjrkt0pgw8w06rsrlqy7jnpfu46uz2","terra1snqazxpnrz7vq77k43hjz5glqp3ujuy7my925l","terra1grgnnu8lxp6m89dq2wp454hj0hgahm0dl085y4","terra1wl3zhj49v2l94ggykmhvcttdusv3gzu7m6pcq5","terra14grum25hp89ueanzupprqwpu76vy647p6c642d","terra1xmhplxe322q4vlwe9cqmz8vf9utarlynu5ufta","terra1vw76jgq4yj2e6xaqswpf770wh6euhl6n6yjggy","terra1jws0fx6zhgcpe8hgvw4mr7vy9q7ha4avv3q0mk","terra1chs7sjjjwuudrnetdeshvsvz636a6x2au3durl","terra1rwquzhyxxsl6wc0put4gnk8zt57s9gzche4gzm","terra1fwmxqep3yjq9mqp7xwexcrhth9t2rtvmum9s7k","terra15jq22ust7lwpqpw74a2nm5wz3mzjystssjpeu3","terra1lxrf9d3crczqg6cxlafgk4zqznjnhq9cyf7sem","terra1pkn5cvvm2n2srqgf274k3xdkxmpyjlj5sdr6zk","terra1489ryykf0ju62q2xr500u5rmwgekwgm5l4v8mv","terra14um45x52z3mzxzgtjqfqhw9wx45fj5hnwre8ze","terra126pwqwszfyhpmdcuzt5evmpgc0ynn6wevrk9el","terra16jpfjxvavajaml6y8hzcz4tlqvgrch0zdknm3e","terra1lv3dkedzw5tnn2982r59lh6fn0xlua7wyn9vrn","terra1c2aqpxs9k2h53z34vgzn9wwdeuz6ldj467fs58","terra1u8czdttfsevzf2gnze2vw9klgdr6hsrp2nj8t7","terra19gz7fm55v50rzvre2e3xx08ee4add0lu6hua8m","terra1ph7y7cp94mtpdhdjuwn0gckcxa5v02rcpjapxl","terra1t2d3prfx5gur57hp5zt0c9dafjw0vxd0axs537","terra13prtycjnmmqayfpwl3z2qqlrcew8jztxcy0fhg","terra1dguajk3gt53dhezrw28lw3rjq7qpu0a9c4h6sq","terra1agslnwulgdmge80ljrv3narj4u3ssdu8uwrsh8","terra1h40v9mwqggdpj6vsmgtju23ux0zwks9q78w2y9","terra127yfdgj8ursvj9p7ljc9rfr8ty4y90d73hpleg","terra1c9w5snjunchrt73q9sq3gkgjdvfykjj9flapyj","terra16r3hh5dt2w2hgwwwxkwwpkqeyzaqtqwjrfwldn","terra12p75pzwnwpy03ydkezu2rkc6q8whz2n2607x0x","terra1wyhlxg3qk2dxw776a4pvyr77yslxj2p7lx4n97","terra1pvs4rrn6pr4nn27h8vprde0dwld3mrre7ucywr","terra1e5ncelsh4qhqt3s97vn43hxlhmt7zd43yszdnf","terra1sl2tca3cp930nnqqqsyht3gn2jacj80c62l8kz","terra135cfxn5f4hyn6yd40gtq753qxje8c0y8f0n7ku","terra120ysvgl83jqmu7h2qnzq2ns4csgua44fhj42ar","terra1l7u75twcf7negcxvflz7908m0alq6ygl4p2xjd","terra1zsky63r58vc7dfn3ljj32ch6fyn4e5qd8skzyz","terra1u870nc5kwt5ntsqmjd7jvuv79c7ua4awx6pdsz","terra18jfdzcfvp9jp08wadu42cqw843ds9zcr7fscjr","terra1yrrlejd8qec6gpc44raulwy2uayq5nzy3u6jtz","terra10alauxa78e46mtr75r92w9eznvm8kyxczv46v8","terra1wxzfajhhm6l79y32ud7nv2up837529em8cz75h","terra10wxsngdf4v7k0achcktjwvt6tgwpeqlrnqav5q","terra1y3sl04cxk5u0z643lep35wtpzfdddu58mnz79m","terra1aprl45fx73m4tws87ydql5570tmu0u3zrynq8a","terra16u3gjst0h6cn4e4hnkg3lzyw32aw3s5g7j6wmq","terra1qmrzf2hzytf6fpuppl4qjs79mev92c5ecch2j2","terra1xzawkluxh7lahk9havmj38eacukvrran3dhakf","terra1rf58rw0cnzz3f74g94l5jy0mcv9nsekjk40lkh"],"a":["terra1agp4wwzgn6fuxqrsqgjvfhvmfqf63ekvn9nvyh","terra1dmfp9wz7uguz99sac777wm6pdmkm7d2vjg5vda","terra12jkvks5d4q8x4pc02aqvd8ljfhqc3da9y3ern7","terra185wxs6jhxe4lljqv956e777ds364muyjdsdn22","terra15ujjdtez8vjn0r5emt92wur5edty82z5epp366","terra18x3zq0fnkxazte2dhwjapagd5kh42f7dmh9je6","terra19jkevz5u2fzqszsat004t8va65x4sjxe0xjylh","terra1kugad5384pmulgpwu3596n2vdcsnk2mh3glxjr","terra1f5ycdjunqcunzhfklww0duuwkeve92czktn5za","terra1vgrkmad4hhyfnyw8v8d3dh5u7glvdt83a0lmu9","terra1xj3t98tkrf5ynwrlzp4ss02snmwen4523z9659","terra1y0hxjauxge52ee5uq2lnx9kduc3458pd98ttdt","terra1he49aq2dq6wqyts0750x7jalyer99pka9aq0g5","terra10e38wnyca7h8u8gq3rmt73kj9q03dhgk8yudfv","terra1dqwpehuzv0759evv2wc2wyn6vatenjxjh55hk3","terra14twqn6estwc8zqpm3t37glwc76t39dytg5gq4q","terra1pgsp7l5y983hx3t8jmjwq34dptjnghk4jessz9","terra1zsdyv4azfdnuqkrlp3npa705sjdttm9aj5qrvf","terra14hwe4te0aeyg7wtatxc6xk2yd420e7zyu076pw","terra1xa3pmdxxudegk9wysvjundsknlaa6frgs864vz","terra1uaspcnh3r5etr3szfmgn6ecuum00dm3l7fstvz"]};
+
+const $ = id => document.getElementById(id);
+const S = {
+  live: null, eps: [], epName: '',
+  block: null, node: null, pool: null, supply: null,
+  vals: null, props: null, recent: null, plan: undefined, keyTypes: null,
+  roles: new Map(), listNote: 'bundled copy of release v2.22.0',
+  queue: null, qState: 'idle', qFailed: 0,
+  tally: new Map(), tallying: false,
+  watch: [], watchData: new Map(),
+  listShown: 30,
+};
+for (const a of BUNDLED.a) S.roles.set(a, 'attacker');
+for (const a of BUNDLED.v) S.roles.set(a, 'victim');
+
+/* ---------- helpers ---------- */
+function el(tag, props, ...kids) {
+  const n = document.createElement(tag);
+  if (props) for (const [k, v] of Object.entries(props)) {
+    if (v == null || v === false) continue;
+    if (k === 'class') n.className = v;
+    else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+    else n.setAttribute(k, v === true ? '' : v);
+  }
+  for (const c of kids.flat()) { if (c == null || c === false) continue; n.append(c.nodeType ? c : document.createTextNode(String(c))); }
+  return n;
+}
+const SVGNS = 'http://www.w3.org/2000/svg';
+function sv(tag, attrs, ...kids) {
+  const n = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) if (v != null) n.setAttribute(k, v);
+  for (const c of kids.flat()) { if (c == null) continue; n.append(c.nodeType ? c : document.createTextNode(String(c))); }
+  return n;
+}
+const nf0 = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
+const nf2 = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
+const nfc = new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 });
+const fL = u => { const x = u / 1e6; return x >= 100000 ? nf0.format(x) : nf2.format(x); };
+const fLc = u => { const x = u / 1e6; return x >= 10000 ? nfc.format(x) : fL(u); };
+const pct = (a, b) => b ? (100 * a / b).toFixed(1) + '%' : '—';
+function dur(ms) {
+  const s = Math.abs(ms) / 1000;
+  if (s < 90) return Math.round(s) + 's';
+  if (s < 5400) return Math.round(s / 60) + ' min';
+  if (s < 86400) return Math.floor(s / 3600) + 'h ' + Math.floor((s % 3600) / 60) + 'm';
+  return Math.floor(s / 86400) + 'd ' + Math.floor((s % 86400) / 3600) + 'h';
+}
+const dayFmt = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' });
+const dtFmt = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+const short = a => a.length > 20 ? a.slice(0, 10) + '…' + a.slice(-6) : a;
+const ver = s => { const m = String(s || '').match(/(\d+)\.(\d+)(?:\.(\d+))?/); return m ? [+m[1], +m[2], +(m[3] || 0)] : null; };
+const vgte = (a, b) => { const c = vcmp(a, b); return c != null && c >= 0; };
+function vcmp(a, b) { a = ver(a); b = ver(b); if (!a || !b) return null; for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] < b[i] ? -1 : 1; return 0; }
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+};
+
+const B32 = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+function bech32(s) {
+  if (typeof s !== 'string' || s !== s.toLowerCase() || s.length > 90) return null;
+  const p = s.lastIndexOf('1');
+  if (p < 1 || p + 7 > s.length) return null;
+  const hrp = s.slice(0, p), data = [];
+  for (const c of s.slice(p + 1)) { const i = B32.indexOf(c); if (i < 0) return null; data.push(i); }
+  const GEN = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
+  let chk = 1;
+  const vals = [...hrp].map(c => c.charCodeAt(0) >> 5).concat([0], [...hrp].map(c => c.charCodeAt(0) & 31), data);
+  for (const v of vals) { const b = chk >>> 25; chk = ((chk & 0x1ffffff) << 5) ^ v; for (let i = 0; i < 5; i++) if ((b >>> i) & 1) chk ^= GEN[i]; }
+  if (chk !== 1) return null;
+  return { hrp, bytes: Math.floor((data.length - 6) * 5 / 8) };
+}
+// returns {ok, addr, kind, why}
+function readAddr(raw) {
+  const addr = String(raw || '').trim().toLowerCase();
+  if (!addr) return { ok: false, why: 'Paste a terra1 address first.' };
+  if (/\s/.test(addr) && addr.split(/\s+/).length >= 12) return { ok: false, why: 'That looks like a recovery phrase. Never paste one into any website, this one included. Use the public address that starts with terra1.' };
+  const b = bech32(addr);
+  if (!b) return { ok: false, why: 'That is not a valid address. Check for a missing or mistyped character.' };
+  if (b.hrp === 'terravaloper') return { ok: false, why: 'That is a validator operator address. Use the wallet address that starts with terra1.' };
+  if (b.hrp !== 'terra') return { ok: false, why: 'That address belongs to another chain. Terra addresses start with terra1.' };
+  if (b.bytes !== 20 && b.bytes !== 32) return { ok: false, why: 'That is not a Terra wallet or contract address.' };
+  return { ok: true, addr, kind: b.bytes === 32 ? 'contract' : 'wallet' };
+}
+const addrLink = a => el('a', { href: CFG.explorer + '/address/' + a, target: '_blank', rel: 'noopener', title: a }, short(a));
+function copyBtn(text, label) {
+  const b = el('button', { class: 'btn tiny', type: 'button' }, label || 'Copy');
+  b.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(text); b.textContent = 'Copied'; }
+    catch (e) { const r = document.createRange(); const pre = b.parentElement.querySelector('.cmd'); if (pre) { r.selectNodeContents(pre); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); b.textContent = 'Selected, press copy'; } }
+    setTimeout(() => { b.textContent = label || 'Copy'; }, 1800);
+  });
+  return b;
+}
+function pill(sev, text) { return el('span', { class: 'pill ' + (sev === 'info' ? '' : sev) }, text); }
+const SEVWORD = { crit: 'Act now', warn: 'Look', info: 'Note', ok: 'Clear' };
+function finding(f) {
+  return el('li', null, pill(f.sev, f.tag || SEVWORD[f.sev]), el('span', { class: 'what' }, f.title), f.detail ? el('span', { class: 'why' }, f.detail) : null);
+}
+
+/* ---------- network ---------- */
+async function getJson(url, timeout) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), timeout || 12000);
+  try {
+    const r = await fetch(url, { signal: ctl.signal });
+    if (r.status === 404 || r.status === 400 || r.status === 501) {
+      const body = await r.json().catch(() => ({}));
+      const e = new Error(body.message || ('HTTP ' + r.status)); e.status = r.status; e.definitive = true; throw e;
+    }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return await r.json();
+  } finally { clearTimeout(t); }
+}
+async function api(path) {
+  let last;
+  for (let i = 0; i < S.eps.length; i++) {
+    try { const j = await getJson(S.eps[i][1] + path); if (i > 0) { S.eps.unshift(...S.eps.splice(i, 1)); S.epName = S.eps[0][0]; paintConn(); } return j; }
+    catch (e) { if (e.definitive) throw e; last = e; }
+  }
+  throw last || new Error('no node');
+}
+async function pool(items, n, fn, onStep) {
+  const out = new Array(items.length); let i = 0, done = 0;
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => {
+    while (i < items.length) { const k = i++; try { out[k] = await fn(items[k], k); } catch (e) { out[k] = { error: e }; } done++; if (onStep) onStep(done, items.length); }
+  }));
+  return out;
+}
+async function probe() {
+  const tries = CFG.endpoints.map(async ep => ({ ep, j: await getJson(ep[1] + '/cosmos/base/tendermint/v1beta1/blocks/latest', 9000) }));
+  try {
+    const first = await Promise.any(tries);
+    S.eps = [first.ep, ...CFG.endpoints.filter(e => e !== first.ep)];
+    S.epName = first.ep[0];
+    S.block = first.j.block && first.j.block.header;
+    return true;
+  } catch (e) { return false; }
+}
+
+/* ---------- moon ---------- */
+function drawMoon() {
+  const syn = 29.530588853, ref = Date.UTC(2000, 0, 6, 18, 14);
+  let p = ((Date.now() - ref) / 86400000 / syn) % 1; if (p < 0) p += 1;
+  const names = ['New moon', 'Waxing crescent', 'First quarter', 'Waxing gibbous', 'Full moon', 'Waning gibbous', 'Last quarter', 'Waning crescent'];
+  const name = names[Math.round(p * 8) % 8];
+  const cx = 20, cy = 20, r = 15, rx = (r * Math.abs(Math.cos(2 * Math.PI * p))).toFixed(2);
+  const waxing = p < 0.5, thin = p < 0.25 || p > 0.75;
+  const d = `M${cx},${cy - r} A${r},${r} 0 0 ${waxing ? 1 : 0} ${cx},${cy + r} A${rx},${r} 0 0 ${(waxing ? !thin : thin) ? 1 : 0} ${cx},${cy - r} Z`;
+  const svg = $('moon');
+  svg.replaceChildren(
+    sv('title', null, 'Tonight: ' + name.toLowerCase()),
+    sv('circle', { cx, cy, r, fill: 'var(--raised)', stroke: 'var(--line-strong)', 'stroke-width': 1.5 }),
+    sv('path', { d, fill: 'var(--accent)' })
+  );
+}
+
+/* ---------- connection + readouts ---------- */
+function paintConn() {
+  const c = $('conn');
+  if (S.live === true) {
+    c.dataset.state = 'live';
+    const age = S.block ? Date.now() - Date.parse(S.block.time) : 0;
+    $('conn-text').textContent = 'Live via ' + S.epName + (S.block ? ' · block ' + nf0.format(+S.block.height) : '');
+    if (S.block) { $('r-block').textContent = nf0.format(+S.block.height); $('r-block-s').textContent = dur(age) + ' ago, ' + S.block.chain_id; }
+  } else if (S.live === false) { c.dataset.state = 'off'; $('conn-text').textContent = 'No live connection'; }
+  $('offline').hidden = S.live !== false;
+}
+function paintReadouts() {
+  const nA = [...S.roles.values()].filter(r => r === 'attacker').length;
+  $('r-list').textContent = nf0.format(S.roles.size);
+  $('r-list-s').textContent = nf0.format(S.roles.size - nA) + ' affected, ' + nA + ' attacker-associated';
+  $('list-src').textContent = 'Source: Terra core, ' + S.listNote;
+  if (S.node) {
+    const v = S.node.application_version || {};
+    $('r-ver').textContent = v.version || '—';
+    const c = vcmp(v.version, CFG.secureVersion);
+    $('r-ver-s').textContent = c == null ? 'version not reported' : c >= 0 ? 'includes the v2.22.0 security release' : 'older than the v2.22.0 security release';
+  }
+  if (S.pool) {
+    $('r-bond').textContent = fLc(+S.pool.bonded_tokens);
+    $('r-bond-s').textContent = S.supply ? pct(+S.pool.bonded_tokens, S.supply) + ' of all LUNA' : 'LUNA bonded to validators';
+  }
+  if (S.queue) {
+    const tot = S.queue.reduce((s, e) => s + e.a, 0);
+    $('r-unb').textContent = fLc(tot);
+    $('r-unb-s').textContent = nf0.format(S.queue.length) + ' exits in the 21-day queue';
+  } else if (S.qState === 'scan') { $('r-unb').textContent = '…'; $('r-unb-s').textContent = 'reading the queue'; }
+  if (S.props) { $('r-gov').textContent = S.props.length; $('r-gov-s').textContent = S.props.length === 1 ? 'proposal in voting' : 'proposals in voting'; }
+}
+
+/* ---------- alerts ---------- */
+function paintAlerts() {
+  const A = [], now = Date.now();
+  if (S.live === false) {
+    A.push({ sev: 'info', tag: 'Offline', title: 'Live checks are paused', detail: 'No node could be reached, so block, queue, validator and governance checks have not run.' });
+  }
+  if (S.live && S.block) {
+    const age = now - Date.parse(S.block.time);
+    if (age > 120000) A.push({ sev: 'warn', title: 'The latest block is ' + dur(age) + ' old', detail: 'Either this node has fallen behind or the chain has paused. Blocks normally arrive every few seconds.' });
+  }
+  if (S.node) {
+    const v = (S.node.application_version || {}).version;
+    if (vcmp(v, CFG.secureVersion) === -1) A.push({ sev: 'crit', title: 'This node runs Terra core ' + v, detail: 'That is older than v2.22.0, the release that added the address restrictions and the CosmWasm fixes.' });
+  }
+  if (S.plan) A.push({ sev: 'warn', title: 'Chain upgrade scheduled: ' + S.plan.name, detail: 'Planned for block ' + nf0.format(+S.plan.height) + '.' });
+  for (const p of S.props || []) {
+    A.push({ sev: p.expedited ? 'warn' : 'info', tag: p.expedited ? 'Expedited' : 'Vote', title: 'Proposal ' + p.id + ' is in voting: ' + (p.title || 'untitled'), detail: 'Voting ends ' + dtFmt.format(new Date(p.voting_end_time)) + ' (in ' + dur(Date.parse(p.voting_end_time) - now) + ').' });
+  }
+  if (S.queue) {
+    const wk = now + 7 * 86400000;
+    const rs = S.queue.filter(e => S.roles.has(e.d));
+    const soon = rs.filter(e => e.t <= wk).reduce((s, e) => s + e.a, 0), all = rs.reduce((s, e) => s + e.a, 0);
+    if (all > 0) A.push({ sev: 'warn', title: fLc(all) + ' LUNA is unbonding from restricted wallets', detail: (soon > 0 ? fLc(soon) + ' of it unlocks within 7 days. ' : '') + 'Under v2.22.0 these addresses cannot move it, and governance has not yet decided what happens next.' });
+    const big = S.queue.filter(e => !S.roles.has(e.d) && e.a >= CFG.bigExit);
+    if (big.length) A.push({ sev: 'info', title: big.length + (big.length === 1 ? ' exit' : ' exits') + ' above ' + fLc(CFG.bigExit) + ' LUNA from other wallets', detail: 'Together ' + fLc(big.reduce((s, e) => s + e.a, 0)) + ' LUNA. Large exits are normal on their own; see the table below for who and when.' });
+    const mine = S.queue.filter(e => S.watch.includes(e.d));
+    if (mine.length) A.push({ sev: 'warn', title: 'A watchlist address is unbonding ' + fLc(mine.reduce((s, e) => s + e.a, 0)) + ' LUNA', detail: 'If you did not request this, someone else may control the wallet.' });
+    if (S.qFailed) A.push({ sev: 'info', title: 'The queue is incomplete', detail: S.qFailed + (S.qFailed === 1 ? ' validator' : ' validators') + ' could not be read, so some exits may be missing.' });
+  }
+  for (const a of S.watch) if (S.roles.has(a)) A.push({ sev: 'crit', title: 'Watchlist address ' + short(a) + ' is on the restricted list', detail: 'Open the wallet checkup for what that means and who to contact.' });
+  if (S.vals) {
+    const v = valStats();
+    if (v && v.third <= 5) A.push({ sev: 'warn', title: 'The top ' + v.third + ' validators hold more than a third of voting power', detail: 'Together they could stop the chain from producing blocks. Spreading stake to smaller validators lowers that risk.' });
+  }
+  const liquid = [...S.tally.entries()].filter(([a]) => S.roles.get(a) === 'attacker').reduce((s, [, t]) => s + (t.liquid || 0), 0);
+  if (liquid > 0) A.push({ sev: 'info', title: fLc(liquid) + ' liquid LUNA sits in attacker-associated addresses', detail: 'Frozen in place by the restriction. Detail in the list below.' });
+  if (!A.length) A.push(S.live ? { sev: 'ok', title: 'Nothing flagged', detail: 'All checks that have finished came back clean.' } : { sev: 'info', tag: 'Wait', title: 'Looking for a node', detail: 'Checks start as soon as one answers.' });
+  const rank = { crit: 0, warn: 1, info: 2, ok: 3 };
+  A.sort((x, y) => rank[x.sev] - rank[y.sev]);
+  $('alerts').replaceChildren(...A.map(finding));
+  $('alerts-when').textContent = S.live ? 'Checked ' + dtFmt.format(new Date()) : '';
+}
+
+/* ---------- unbonding queue ---------- */
+async function scanQueue() {
+  if (!S.vals) return;
+  try {
+    const c = JSON.parse(sessionStorage.getItem('lw.queue') || 'null');
+    if (c && Date.now() - c.ts < 600000) { S.queue = c.q.map(x => ({ d: x[0], v: x[1], t: x[2], a: x[3] })); S.qFailed = c.f || 0; S.qState = 'done'; paintQueue(); return; }
+  } catch (e) {}
+  const vals = S.vals.filter(v => v.status !== 'BOND_STATUS_UNBONDED');
+  S.qState = 'scan'; S.qFailed = 0;
+  $('q-progress').hidden = false; paintReadouts();
+  const entries = [];
+  const res = await pool(vals, 3, async v => {
+    let key = null, pages = 0;
+    do {
+      const j = await api('/cosmos/staking/v1beta1/validators/' + v.operator_address + '/unbonding_delegations?pagination.limit=500' + (key ? '&pagination.key=' + encodeURIComponent(key) : ''));
+      for (const u of j.unbonding_responses || []) for (const e of u.entries || []) entries.push({ d: u.delegator_address, v: v.operator_address, t: Date.parse(e.completion_time), a: +e.balance });
+      key = j.pagination && j.pagination.next_key;
+    } while (key && ++pages < 8);
+    return true;
+  }, (done, total) => { $('q-progress').firstElementChild.style.width = (100 * done / total) + '%'; $('q-status').textContent = 'Reading the queue from ' + S.epName + ': validator ' + done + ' of ' + total; });
+  S.qFailed = res.filter(r => r && r.error).length;
+  S.queue = entries.filter(e => e.a > 0 && e.t > Date.now());
+  S.qState = 'done'; $('q-progress').hidden = true;
+  try { sessionStorage.setItem('lw.queue', JSON.stringify({ ts: Date.now(), f: S.qFailed, q: S.queue.map(e => [e.d, e.v, e.t, e.a]) })); } catch (e) {}
+  paintQueue();
+}
+function niceMax(x) { if (x <= 0) return 1; const p = Math.pow(10, Math.floor(Math.log10(x))); for (const m of [1, 2, 2.5, 5, 10]) if (x <= m * p) return m * p; return 10 * p; }
+function buckets() {
+  const now = Date.now(), B = Array.from({ length: 21 }, (_, i) => ({ i, t: now + i * 86400000, r: 0, o: 0, n: 0 }));
+  for (const e of S.queue || []) { const k = Math.min(20, Math.max(0, Math.floor((e.t - now) / 86400000))); if (S.roles.has(e.d)) B[k].r += e.a; else B[k].o += e.a; B[k].n++; }
+  return B;
+}
+function paintQueue() {
+  paintReadouts(); paintAlerts(); paintList(); paintWatch();
+  const host = $('q-chart'), B = buckets();
+  const W = Math.max(280, host.clientWidth || 700), H = 220, L = 46, R = 8, T = 10, Bm = 26;
+  const iw = W - L - R, ih = H - T - Bm, slot = iw / 21, bw = Math.min(24, slot - 4);
+  const max = niceMax(Math.max(...B.map(b => b.r + b.o)) / 1e6) * 1e6;
+  const y = v => T + ih - (v / max) * ih;
+  const svg = sv('svg', { viewBox: `0 0 ${W} ${H}`, height: H, role: 'img', 'aria-label': 'LUNA finishing unbonding on each of the next 21 days, split into restricted wallets and all other wallets' });
+  for (const f of [0, 0.5, 1]) {
+    svg.append(sv('line', { x1: L, x2: W - R, y1: y(max * f), y2: y(max * f), stroke: 'var(--line)', 'stroke-width': 1 }));
+    svg.append(sv('text', { x: L - 6, y: y(max * f) + 4, 'text-anchor': 'end' }, S.queue ? nfc.format(max * f / 1e6) : ''));
+  }
+  B.forEach(b => {
+    const x = L + b.i * slot + (slot - bw) / 2;
+    if (b.i % 7 === 0 || b.i === 20) svg.append(sv('text', { x: b.i === 0 ? L : b.i === 20 ? W - R : L + b.i * slot + slot / 2, y: H - 8, 'text-anchor': b.i === 0 ? 'start' : b.i === 20 ? 'end' : 'middle' }, b.i === 0 ? 'Today' : dayFmt.format(new Date(b.t))));
+    const ho = (b.o / max) * ih, hr = (b.r / max) * ih;
+    const top = (yy, h, fill) => { if (h < 0.5) return; const rr = Math.min(4, h, bw / 2); svg.append(sv('path', { d: `M${x},${yy + h} V${yy + rr} Q${x},${yy} ${x + rr},${yy} H${x + bw - rr} Q${x + bw},${yy} ${x + bw},${yy + rr} V${yy + h} Z`, fill })); };
+    if (hr >= 0.5 && ho >= 0.5) { svg.append(sv('rect', { x, y: y(b.o), width: bw, height: ho, fill: 'var(--s1)' })); top(y(b.o + b.r) , Math.max(0, hr - 2), 'var(--s2)'); }
+    else if (ho >= 0.5) top(y(b.o), ho, 'var(--s1)');
+    else if (hr >= 0.5) top(y(b.r), hr, 'var(--s2)');
+    const hit = sv('rect', { x: L + b.i * slot, y: T, width: slot, height: ih, fill: 'transparent', tabindex: S.queue ? 0 : null, 'aria-label': (b.i === 0 ? 'Today' : dayFmt.format(new Date(b.t))) + ': ' + fL(b.r + b.o) + ' LUNA, of which ' + fL(b.r) + ' from restricted wallets' });
+    if (S.queue) {
+      const show = () => showTip(host, L + b.i * slot + slot / 2, W, [b.i === 0 ? 'Next 24 hours' : dayFmt.format(new Date(b.t)), ['Restricted wallets', fL(b.r), 'var(--s2)'], ['All other wallets', fL(b.o), 'var(--s1)'], ['Exits', nf0.format(b.n)]]);
+      hit.addEventListener('pointerenter', show); hit.addEventListener('focus', show);
+      hit.addEventListener('pointerleave', () => hideTip(host)); hit.addEventListener('blur', () => hideTip(host));
+    }
+    svg.append(hit);
+  });
+  svg.append(sv('line', { x1: L, x2: W - R, y1: y(0), y2: y(0), stroke: 'var(--line-strong)', 'stroke-width': 1 }));
+  if (!S.queue) svg.append(sv('text', { x: L + iw / 2, y: T + ih / 2, 'text-anchor': 'middle', style: 'font-size:13px' }, S.qState === 'scan' ? 'Reading the queue…' : 'The queue appears here once a node answers'));
+  host.replaceChildren(svg);
+  if (S.queue) {
+    const tot = S.queue.reduce((s, e) => s + e.a, 0);
+    $('q-status').textContent = fLc(tot) + ' LUNA across ' + nf0.format(S.queue.length) + ' exits' + (S.qFailed ? ' (' + S.qFailed + (S.qFailed === 1 ? ' validator' : ' validators') + ' unread)' : '') + '. LUNA, by the day it unlocks.';
+    $('q-table-wrap').hidden = false;
+    $('q-table').replaceChildren(el('thead', null, el('tr', null, el('th', null, 'Unlocks'), el('th', { class: 'r' }, 'Restricted wallets'), el('th', { class: 'r' }, 'All other wallets'), el('th', { class: 'r' }, 'Exits'))),
+      el('tbody', null, B.map(b => el('tr', null, el('td', null, b.i === 0 ? 'Next 24 hours' : dayFmt.format(new Date(b.t))), el('td', { class: 'r' }, fL(b.r)), el('td', { class: 'r' }, fL(b.o)), el('td', { class: 'r' }, nf0.format(b.n))))));
+  }
+  paintTop();
+}
+function showTip(host, x, W, rows) {
+  let t = host.querySelector('.tip'); if (!t) { t = el('div', { class: 'tip' }); host.append(t); }
+  t.replaceChildren(el('b', null, rows[0]), ...rows.slice(1).map(r => el('div', { class: 'num' }, r[2] ? el('i', { style: 'display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;background:' + r[2] }) : null, r[0] + ': ', el('b', { style: 'display:inline' }, r[1]))));
+  t.hidden = false;
+  const left = x > W / 2;
+  t.style.top = '8px'; t.style.left = left ? '' : (x + 14) + 'px'; t.style.right = left ? (W - x + 14) + 'px' : '';
+}
+function hideTip(host) { const t = host.querySelector('.tip'); if (t) t.hidden = true; }
+function valName(op) { const v = (S.vals || []).find(v => v.operator_address === op); return v ? (v.description && v.description.moniker) || short(op) : short(op); }
+function rolePill(a) {
+  const r = S.roles.get(a);
+  if (r === 'attacker') return pill('crit', 'Attacker-associated');
+  if (r) return pill('warn', 'Affected, restricted');
+  if (S.watch.includes(a)) return pill('info', 'On your watchlist');
+  return null;
+}
+function paintTop() {
+  const t = $('q-top');
+  if (!S.queue) { t.replaceChildren(); $('q-top-empty').hidden = false; return; }
+  const only = $('q-only').checked, now = Date.now();
+  const rows = S.queue.filter(e => !only || S.roles.has(e.d)).sort((a, b) => b.a - a.a).slice(0, 15);
+  $('q-top-empty').hidden = rows.length > 0;
+  $('q-top-empty').textContent = only ? 'No restricted wallet has LUNA in the queue right now.' : 'The queue is empty.';
+  if (!rows.length) { t.replaceChildren(); return; }
+  t.replaceChildren(el('thead', null, el('tr', null, el('th', null, 'Wallet'), el('th', { class: 'r' }, 'LUNA'), el('th', null, 'Unlocks'), el('th', null, 'From validator'), el('th', null, 'Flag'))),
+    el('tbody', null, rows.map(e => el('tr', null, el('td', { class: 'addr' }, addrLink(e.d)), el('td', { class: 'r' }, fL(e.a)), el('td', { class: 'num', style: 'white-space:nowrap' }, 'in ' + dur(e.t - now)), el('td', null, valName(e.v)), el('td', null, rolePill(e.d) || el('span', { class: 'muted' }, '—'))))));
+}
+
+/* ---------- restricted list ---------- */
+async function refreshList() {
+  try {
+    const ctl = new AbortController(); setTimeout(() => ctl.abort(), 10000);
+    const r = await fetch(CFG.listRaw, { signal: ctl.signal }); if (!r.ok) return;
+    const txt = (await r.text()).split('var testChainBlacklist')[0];
+    const m = new Map();
+    for (const x of txt.matchAll(/"(terra1[0-9a-z]{38,58})":\s*true,?[ \t]*(?:\/\/[ \t]*(\w+))?/g)) m.set(x[1], x[2] === 'attacker' ? 'attacker' : 'victim');
+    if (m.size < 10) return;
+    const changed = m.size !== S.roles.size || [...m.keys()].some(k => !S.roles.has(k));
+    S.roles = m; S.listNote = 'release/v2.22 branch, read just now' + (changed ? ' (changed since v2.22.0)' : '');
+    paintReadouts(); paintList(); paintAlerts(); if (S.queue) paintQueue();
+  } catch (e) {}
+}
+async function tallyOne(a) {
+  const [b, d] = await Promise.all([
+    api('/cosmos/bank/v1beta1/balances/' + a + '/by_denom?denom=uluna'),
+    api('/cosmos/staking/v1beta1/delegations/' + a + '?pagination.limit=200'),
+  ]);
+  return { liquid: +((b.balance || {}).amount || 0), staked: (d.delegation_responses || []).reduce((s, x) => s + +x.balance.amount, 0) };
+}
+async function tally(role) {
+  if (S.tallying || !S.live) return;
+  S.tallying = true;
+  const addrs = [...S.roles.entries()].filter(([a, r]) => r === role && !S.tally.has(a)).map(([a]) => a);
+  const btn = $('tally-all'); btn.disabled = true;
+  await pool(addrs, 3, async a => { S.tally.set(a, await tallyOne(a)); }, (done, total) => { if (role === 'victim') btn.textContent = 'Reading ' + done + ' of ' + total + '…'; if (done % 10 === 0 || done === total) { paintList(); paintAlerts(); } });
+  S.tallying = false; btn.disabled = false; btn.textContent = 'Read balances for all affected wallets';
+  paintList(); paintAlerts();
+}
+function paintList() {
+  const q = $('list-q').value.trim().toLowerCase();
+  const unb = new Map(); for (const e of S.queue || []) if (S.roles.has(e.d)) unb.set(e.d, (unb.get(e.d) || 0) + e.a);
+  let rows = [...S.roles.entries()].sort((x, y) => (x[1] === 'attacker' ? 0 : 1) - (y[1] === 'attacker' ? 0 : 1) || (unb.get(y[0]) || 0) - (unb.get(x[0]) || 0));
+  if (q) rows = rows.filter(([a]) => a.includes(q));
+  const cell = v => v == null ? el('span', { class: 'muted' }, '—') : fL(v);
+  const shown = rows.slice(0, q ? 60 : S.listShown);
+  $('list-table').replaceChildren(el('thead', null, el('tr', null, el('th', null, 'Address'), el('th', null, 'Label'), el('th', { class: 'r' }, 'Liquid'), el('th', { class: 'r' }, 'Staked'), el('th', { class: 'r' }, 'Unbonding'))),
+    el('tbody', null, shown.length ? shown.map(([a, r]) => { const t = S.tally.get(a); return el('tr', null, el('td', { class: 'addr' }, addrLink(a)), el('td', null, r === 'attacker' ? pill('crit', 'Attacker-associated') : pill('warn', 'Affected')), el('td', { class: 'r' }, cell(t && t.liquid)), el('td', { class: 'r' }, cell(t && t.staked)), el('td', { class: 'r' }, cell(S.queue ? (unb.get(a) || 0) : null))); })
+      : el('tr', null, el('td', { colspan: 5, class: 'muted' }, readAddr(q).ok ? 'Not on the restricted list.' : 'No restricted address contains that text.'))));
+  const more = $('list-more');
+  more.hidden = !!q || rows.length <= S.listShown;
+  more.textContent = 'Show all ' + rows.length;
+  const sum = role => { let l = 0, s = 0, n = 0; for (const [a, t] of S.tally) if (S.roles.get(a) === role) { l += t.liquid; s += t.staked; n++; } return { l, s, n }; };
+  const ua = [...unb.entries()].filter(([a]) => S.roles.get(a) === 'attacker').reduce((s, [, v]) => s + v, 0), uv = [...unb.values()].reduce((s, v) => s + v, 0) - ua;
+  const parts = [], A = sum('attacker'), V = sum('victim');
+  if (A.n) parts.push('Attacker-associated addresses hold ' + fLc(A.l) + ' liquid and ' + fLc(A.s) + ' staked LUNA' + (S.queue ? ', with ' + fLc(ua) + ' unbonding' : '') + '.');
+  if (V.n) parts.push('Affected wallets read so far (' + V.n + '): ' + fLc(V.l) + ' liquid, ' + fLc(V.s) + ' staked' + (S.queue ? ', ' + fLc(uv) + ' unbonding' : '') + '.');
+  else if (S.queue) parts.push('Affected wallets have ' + fLc(uv) + ' LUNA unbonding.');
+  $('tally-sum').textContent = parts.join(' ');
+  $('tally-all').hidden = !S.live || V.n >= [...S.roles.values()].filter(r => r === 'victim').length;
+}
+
+/* ---------- validators ---------- */
+function valStats() {
+  const b = (S.vals || []).filter(v => v.status === 'BOND_STATUS_BONDED').sort((x, y) => +y.tokens - +x.tokens);
+  if (!b.length) return null;
+  const total = b.reduce((s, v) => s + +v.tokens, 0);
+  let cum = 0, third = 0, two = 0;
+  b.forEach((v, i) => { cum += +v.tokens; if (!third && cum > total / 3) third = i + 1; if (!two && cum >= total * 2 / 3) two = i + 1; });
+  const pq = b.filter(v => /ml.?dsa/i.test((v.consensus_pubkey || {})['@type'] || '')).reduce((s, v) => s + +v.tokens, 0);
+  return { b, total, third, two, pq };
+}
+function paintVals() {
+  const v = valStats(); if (!v) return;
+  $('val-empty').hidden = true;
+  $('val-meta').textContent = v.b.length + ' active validators';
+  $('val-sum').textContent = 'The top ' + v.third + ' validators together hold more than a third of voting power, enough to halt the chain. The top ' + v.two + ' hold two-thirds, enough to control it.';
+  const max = +v.b[0].tokens;
+  $('val-bars').replaceChildren(...v.b.slice(0, 10).map(x => el('div', { class: 'bar-row', title: fL(+x.tokens) + ' LUNA' }, el('span', { class: 'nm' }, (x.description && x.description.moniker) || short(x.operator_address)), el('span', { class: 'tr' }, el('i', { style: 'width:' + (100 * +x.tokens / max).toFixed(1) + '%' })), el('span', { class: 'pc' }, pct(+x.tokens, v.total)))));
+}
+
+/* ---------- governance ---------- */
+const PSTAT = { PROPOSAL_STATUS_VOTING_PERIOD: ['warn', 'Voting'], PROPOSAL_STATUS_PASSED: ['ok', 'Passed'], PROPOSAL_STATUS_REJECTED: ['info', 'Rejected'], PROPOSAL_STATUS_FAILED: ['info', 'Failed'], PROPOSAL_STATUS_DEPOSIT_PERIOD: ['info', 'Deposit'] };
+function paintGov() {
+  const seen = new Set(), rows = [];
+  for (const p of [...(S.props || []), ...(S.recent || [])]) { if (seen.has(p.id)) continue; seen.add(p.id); rows.push(p); }
+  if (!rows.length) { if (S.props && S.recent) $('gov-empty').textContent = 'No proposals found.'; return; }
+  $('gov-empty').hidden = true;
+  $('gov-table').replaceChildren(el('thead', null, el('tr', null, el('th', null, '#'), el('th', null, 'Proposal'), el('th', null, 'Status'))),
+    el('tbody', null, rows.slice(0, 8).map(p => { const s = PSTAT[p.status] || ['info', '—']; const id = String(p.id).replace(/\D/g, '');
+      return el('tr', null, el('td', { class: 'num' }, el('a', { href: CFG.explorer + '/proposals/' + id, target: '_blank', rel: 'noopener' }, id)), el('td', null, (p.title || 'Untitled') + (p.expedited ? ' (expedited)' : ''), p.status === 'PROPOSAL_STATUS_VOTING_PERIOD' ? el('div', { class: 'small muted' }, 'Ends ' + dtFmt.format(new Date(p.voting_end_time))) : null), el('td', null, pill(s[0], s[1]))); })));
+}
+
+/* ---------- watchlist ---------- */
+async function loadWatch(a) {
+  if (!S.live) return;
+  try {
+    const [t, u] = await Promise.all([tallyOne(a), api('/cosmos/staking/v1beta1/delegators/' + a + '/unbonding_delegations?pagination.limit=200')]);
+    t.unb = (u.unbonding_responses || []).reduce((s, x) => s + x.entries.reduce((q, e) => q + +e.balance, 0), 0);
+    S.watchData.set(a, t);
+  } catch (e) { S.watchData.set(a, { error: true }); }
+  paintWatch();
+}
+function paintWatch() {
+  $('watch-empty').hidden = S.watch.length > 0;
+  const t = $('watch-table');
+  if (!S.watch.length) { t.replaceChildren(); return; }
+  const cell = v => v == null ? el('span', { class: 'muted' }, '—') : fL(v);
+  t.replaceChildren(el('thead', null, el('tr', null, el('th', null, 'Address'), el('th', { class: 'r' }, 'Liquid'), el('th', { class: 'r' }, 'Staked'), el('th', { class: 'r' }, 'Unbonding'), el('th', null, 'Status'), el('th', null, ''))),
+    el('tbody', null, S.watch.map(a => { const d = S.watchData.get(a) || {};
+      const st = S.roles.has(a) ? rolePill(a) : d.error ? pill('info', 'Could not read') : d.unb > 0 ? pill('warn', 'Unbonding') : d.liquid != null ? pill('ok', 'Nothing flagged') : el('span', { class: 'muted' }, S.live ? 'reading…' : 'needs a live connection');
+      return el('tr', null, el('td', { class: 'addr' }, addrLink(a)), el('td', { class: 'r' }, cell(d.liquid)), el('td', { class: 'r' }, cell(d.staked)), el('td', { class: 'r' }, cell(d.unb)), el('td', null, st),
+        el('td', { style: 'white-space:nowrap' }, el('button', { class: 'btn tiny', onclick: () => { $('ck-in').value = a; showTab('checkup'); runCheckup(); } }, 'Checkup'), ' ', el('button', { class: 'btn tiny', 'aria-label': 'Remove ' + a, onclick: () => { S.watch = S.watch.filter(x => x !== a); store.set('lw.watch', S.watch); paintWatch(); paintAlerts(); } }, 'Remove'))); })));
+}
+function addWatch() {
+  const r = readAddr($('watch-in').value);
+  if (!r.ok) { $('watch-msg').textContent = r.why; return; }
+  if (S.watch.includes(r.addr)) { $('watch-msg').textContent = 'Already on your watchlist.'; return; }
+  if (S.watch.length >= 12) { $('watch-msg').textContent = 'The watchlist holds 12 addresses. Remove one first.'; return; }
+  S.watch.push(r.addr); store.set('lw.watch', S.watch);
+  $('watch-in').value = ''; $('watch-msg').textContent = '';
+  paintWatch(); paintAlerts(); loadWatch(r.addr);
+}
+
+/* ---------- checkup ---------- */
+const MSG = {
+  '/cosmos.bank.v1beta1.MsgSend': ['crit', 'send your coins anywhere'],
+  '/cosmos.bank.v1beta1.MsgMultiSend': ['crit', 'send your coins anywhere'],
+  '/ibc.applications.transfer.v1.MsgTransfer': ['crit', 'send your coins to another chain'],
+  '/cosmwasm.wasm.v1.MsgExecuteContract': ['crit', 'call any contract as you, which includes moving your tokens'],
+  '/cosmos.authz.v1beta1.MsgGrant': ['crit', 'hand out further permissions in your name'],
+  '/cosmos.authz.v1beta1.MsgExec': ['crit', 'use permissions others gave you'],
+  '/cosmos.distribution.v1beta1.MsgSetWithdrawAddress': ['crit', 'redirect your staking rewards to another address'],
+  '/cosmos.feegrant.v1beta1.MsgGrantAllowance': ['warn', 'let others spend your LUNA on fees'],
+  '/cosmos.staking.v1beta1.MsgUndelegate': ['warn', 'unstake your LUNA'],
+  '/cosmos.staking.v1beta1.MsgBeginRedelegate': ['warn', 'move your stake to a different validator'],
+  '/cosmos.staking.v1beta1.MsgDelegate': ['info', 'stake your liquid LUNA'],
+  '/cosmos.distribution.v1beta1.MsgWithdrawDelegatorReward': ['info', 'claim your staking rewards into your own wallet'],
+  '/cosmos.gov.v1.MsgVote': ['info', 'vote with your stake'],
+  '/cosmos.gov.v1beta1.MsgVote': ['info', 'vote with your stake'],
+};
+const STAKE = { AUTHORIZATION_TYPE_DELEGATE: '/cosmos.staking.v1beta1.MsgDelegate', AUTHORIZATION_TYPE_UNDELEGATE: '/cosmos.staking.v1beta1.MsgUndelegate', AUTHORIZATION_TYPE_REDELEGATE: '/cosmos.staking.v1beta1.MsgBeginRedelegate' };
+const TAIL = ' --chain-id phoenix-1 --gas auto --gas-adjustment 1.5 --gas-prices 0.015uluna';
+function readGrant(g) {
+  const a = g.authorization || {}, t = a['@type'] || '';
+  let msg = a.msg, limit = '';
+  if (t.endsWith('SendAuthorization')) { msg = '/cosmos.bank.v1beta1.MsgSend'; limit = (a.spend_limit || []).map(c => c.denom === 'uluna' ? fL(+c.amount) + ' LUNA' : c.amount + ' ' + c.denom).join(', '); }
+  else if (t.endsWith('StakeAuthorization')) { msg = STAKE[a.authorization_type] || '/cosmos.staking.v1beta1.MsgDelegate'; if (a.max_tokens) limit = fL(+a.max_tokens.amount) + ' LUNA'; }
+  else if (t.includes('TransferAuthorization')) msg = '/ibc.applications.transfer.v1.MsgTransfer';
+  else if (t.includes('ContractExecutionAuthorization')) { msg = '/cosmwasm.wasm.v1.MsgExecuteContract'; limit = 'named contracts only'; }
+  const known = MSG[msg] || ['warn', 'act as you for this message type'];
+  let sev = known[0];
+  if (limit === 'named contracts only' && sev === 'crit') sev = 'warn';
+  const exp = g.expiration ? Date.parse(g.expiration) : null;
+  const expired = exp != null && exp < Date.now();
+  return { msg: msg || t, sev: expired ? 'info' : sev, can: known[1], limit, exp, expired, grantee: g.grantee, granter: g.granter };
+}
+function cmdBlock(cmd) { return el('div', null, el('pre', { class: 'cmd' }, cmd), el('div', { style: 'margin-top:6px' }, copyBtn(cmd, 'Copy revoke command'))); }
+async function settle(obj) { const out = {}; await Promise.all(Object.entries(obj).map(async ([k, p]) => { try { out[k] = { ok: await p }; } catch (e) { out[k] = { err: e }; } })); return out; }
+function baseAccount(acc) { if (!acc) return null; if (acc.base_account) return acc.base_account; if (acc.base_vesting_account) return acc.base_vesting_account.base_account; return acc; }
+function keyScheme(pk) { const t = (pk && pk['@type']) || ''; if (/ml.?dsa/i.test(t)) return ['ML-DSA', true]; if (t.includes('secp256k1')) return ['secp256k1', false]; if (t.includes('ed25519')) return ['ed25519', false]; if (t.includes('multisig')) return ['multisig of classical keys', false]; return [t.split('.').slice(-2, -1)[0] || 'unknown', false]; }
+let cw20List = null;
+async function loadCw20() {
+  if (cw20List) return cw20List;
+  const list = CFG.extraCw20.slice();
+  try {
+    const j = await getJson(CFG.assetlist, 10000);
+    for (const a of j.assets || []) if (a.type_asset === 'cw20' && readAddr(a.address).ok && !list.some(x => x.address === a.address))
+      list.push({ symbol: String(a.symbol || '').slice(0, 16), address: a.address, decimals: Math.max(0, ...(a.denom_units || []).map(u => +u.exponent || 0)) || 6 });
+  } catch (e) {}
+  return (cw20List = list);
+}
+const ORIGIN = {
+  desktop: ['crit', 'Move everything you still control to a wallet with a newly generated recovery phrase. Importing the old phrase into another wallet does not help, because the phrase itself may be reconstructible. Use current wallet software or a hardware wallet to create the new one.'],
+  extension: ['ok', 'Phoenix Foundation does not currently believe phrases created in the Station browser extension are affected. It used the browser\'s own randomness, not the vulnerable library.'],
+  other: ['ok', 'This flaw is specific to phrases first created in Terra Station Desktop. A phrase created in a hardware wallet or another wallet is not affected by it.'],
+  unsure: ['warn', 'Phoenix Foundation\'s advice is to treat the wallet as possibly affected and move to a newly generated phrase. No complete list of affected addresses exists, so not being on the restricted list does not prove a phrase is safe.'],
+};
+let ckRun = 0;
+async function runCheckup() {
+  const r = readAddr($('ck-in').value), out = $('ck-out'), run = ++ckRun;
+  $('ck-msg').textContent = r.ok ? '' : r.why;
+  if (!r.ok) return;
+  const a = r.addr, role = S.roles.get(a), F = [];
+  $('ck-intro').hidden = true; out.hidden = false;
+  const head = el('div', { class: 'panel' }), body = el('div', { class: 'wing' });
+  out.replaceChildren(head, body);
+  const paintHead = busy => {
+    const rank = { crit: 0, warn: 1, info: 2, ok: 3 };
+    F.sort((x, y) => rank[x.sev] - rank[y.sev]);
+    const worst = F.length ? F[0].sev : 'ok';
+    const verdict = busy ? 'Reading the chain…' : worst === 'crit' ? 'Action needed' : worst === 'warn' ? 'Worth a look' : 'Nothing flagged in what this checks';
+    head.replaceChildren(
+      el('div', { class: 'panel-head' }, el('h2', null, verdict), el('span', { class: 'mono', style: 'overflow-wrap:anywhere' }, a)),
+      el('ul', { class: 'findings' }, F.map(finding)),
+      el('p', { class: 'small muted' }, 'This reads public chain data only. It cannot see how a recovery phrase was created, and it does not cover NFTs, liquidity positions or other chains.'));
+  };
+  if (role === 'attacker') F.push({ sev: 'crit', tag: 'Restricted', title: 'On the restricted list as attacker-associated', detail: 'Phoenix Foundation ties this address to the exploitation. It cannot start transactions on phoenix-1. Do not send funds to it.' });
+  else if (role) F.push({ sev: 'crit', tag: 'Restricted', title: 'On the restricted list as an affected wallet', detail: 'This address cannot start transactions while governance works out a recovery process. If it is yours, email security@phoenix.money with the public address, relevant transaction hashes and roughly when the wallet was created. Never send anyone the recovery phrase.' });
+  else F.push({ sev: 'ok', title: 'Not on the restricted list', detail: 'Checked against ' + S.roles.size + ' addresses (' + S.listNote + '). The list is known to be incomplete.' });
+  if (!S.live) {
+    F.push({ sev: 'info', tag: 'Offline', title: 'Chain checks did not run', detail: 'Holdings, permissions and allowances need a live connection to a node.' });
+    paintHead(false); body.append(originPanel()); return;
+  }
+  paintHead(true);
+  const isC = r.kind === 'contract';
+  const q = await settle({
+    acc: api('/cosmos/auth/v1beta1/accounts/' + a),
+    bal: api('/cosmos/bank/v1beta1/balances/' + a + '?pagination.limit=200'),
+    del: api('/cosmos/staking/v1beta1/delegations/' + a + '?pagination.limit=200'),
+    unb: api('/cosmos/staking/v1beta1/delegators/' + a + '/unbonding_delegations?pagination.limit=200'),
+    given: api('/cosmos/authz/v1beta1/grants/granter/' + a + '?pagination.limit=200'),
+    fee: api('/cosmos/feegrant/v1beta1/issued/' + a + '?pagination.limit=200'),
+    con: isC ? api('/cosmwasm/wasm/v1/contract/' + a) : Promise.resolve(null),
+  });
+  if (run !== ckRun) return;
+  const failed = Object.entries(q).filter(([, v]) => v.err && !(v.err.status === 404)).map(([k]) => k);
+
+  // account
+  const accRaw = q.acc.ok && q.acc.ok.account, base = baseAccount(accRaw);
+  const kv = el('dl', { class: 'kv' });
+  const row = (k, v) => kv.append(el('dt', null, k), el('dd', null, v));
+  if (q.acc.err && q.acc.err.status === 404) {
+    F.push({ sev: 'info', title: 'No account on phoenix-1 yet', detail: 'The address has never received funds or signed a transaction on this chain.' });
+    row('Account', 'Not found on chain');
+  } else if (base) {
+    const type = (accRaw['@type'] || '').split('.').pop();
+    row('Type', isC ? 'Smart contract' : type.includes('Vesting') ? 'Vesting account (' + type + ')' : type === 'ModuleAccount' ? 'Module account' : 'Wallet');
+    row('Transactions signed', nf0.format(+base.sequence || 0));
+    if (!isC) {
+      if (base.pub_key) { const [name, pq] = keyScheme(base.pub_key); row('Public key', 'On-chain, ' + name);
+        if (!pq) F.push({ sev: 'info', tag: 'Quantum', title: 'Public key is on-chain (' + name + ')', detail: 'Normal for any wallet that has sent a transaction. It matters only once quantum computers can break this scheme; see the Quantum tab.' }); }
+      else row('Public key', 'Not published yet');
+    }
+  }
+  if (q.con.ok && q.con.ok.contract_info) {
+    const ci = q.con.ok.contract_info;
+    row('Label', ci.label || '—'); row('Code ID', ci.code_id);
+    row('Admin', ci.admin ? addrLink(ci.admin) : 'None, the code cannot be changed');
+    if (ci.admin) F.push({ sev: S.roles.has(ci.admin) ? 'crit' : 'info', tag: 'Admin', title: 'This contract can be upgraded by its admin', detail: 'The admin ' + ci.admin + ' can replace the contract\'s code.' + (S.roles.has(ci.admin) ? ' That admin is on the restricted list.' : '') });
+  }
+
+  // holdings
+  const bals = (q.bal.ok && q.bal.ok.balances) || [], dels = (q.del.ok && q.del.ok.delegation_responses) || [], unbs = (q.unb.ok && q.unb.ok.unbonding_responses) || [];
+  const liquid = +((bals.find(b => b.denom === 'uluna') || {}).amount || 0), staked = dels.reduce((s, d) => s + +d.balance.amount, 0);
+  const ents = unbs.flatMap(u => u.entries.map(e => ({ v: u.validator_address, t: Date.parse(e.completion_time), a: +e.balance }))).sort((x, y) => x.t - y.t);
+  const unbT = ents.reduce((s, e) => s + e.a, 0);
+  const hold = el('div', { class: 'panel' }, el('h3', null, 'Holdings'),
+    el('dl', { class: 'kv num' }, el('dt', null, 'Liquid LUNA'), el('dd', null, fL(liquid)), el('dt', null, 'Staked LUNA'), el('dd', null, fL(staked) + (dels.length ? ' across ' + dels.length + (dels.length === 1 ? ' validator' : ' validators') : '')), el('dt', null, 'Unbonding LUNA'), el('dd', null, fL(unbT)), el('dt', null, 'Other tokens'), el('dd', null, Math.max(0, bals.length - (liquid ? 1 : 0)) + ' other denominations')));
+  if (ents.length) {
+    hold.append(el('div', { class: 'scroll' }, el('table', null, el('thead', null, el('tr', null, el('th', { class: 'r' }, 'LUNA'), el('th', null, 'Unlocks'), el('th', null, 'From validator'))), el('tbody', null, ents.map(e => el('tr', null, el('td', { class: 'r' }, fL(e.a)), el('td', null, dtFmt.format(new Date(e.t)) + ' (in ' + dur(e.t - Date.now()) + ')'), el('td', null, valName(e.v))))))));
+    F.push({ sev: role ? 'info' : 'warn', title: fL(unbT) + ' LUNA is unbonding', detail: 'The first part unlocks ' + dtFmt.format(new Date(ents[0].t)) + '. If the owner did not ask to unstake, someone else may control this wallet.' });
+  }
+
+  // authz
+  const grants = ((q.given.ok && q.given.ok.grants) || []).map(readGrant);
+  const authz = el('div', { class: 'panel' }, el('h3', null, 'Permissions given to other addresses'));
+  if (q.given.err && q.given.err.status !== 404) authz.append(el('p', { class: 'empty' }, 'Could not read permissions from the node.'));
+  else if (!grants.length) authz.append(el('p', { class: 'empty' }, 'None. No other address can act for this wallet through authz.'));
+  else {
+    authz.append(el('ul', { class: 'findings' }, grants.map(g => el('li', null, pill(g.sev, g.expired ? 'Expired' : SEVWORD[g.sev]),
+      el('span', { class: 'what' }, short(g.grantee) + ' can ' + g.can + (g.limit ? ' (limit: ' + g.limit + ')' : '')),
+      el('span', { class: 'why' }, el('span', { class: 'mono' }, g.msg), ' · ', g.exp ? (g.expired ? 'expired ' : 'expires ') + dtFmt.format(new Date(g.exp)) : 'never expires', ' · grantee ', addrLink(g.grantee),
+        cmdBlock('terrad tx authz revoke ' + g.grantee + ' ' + g.msg + ' --from ' + a + TAIL))))));
+    const live = grants.filter(g => !g.expired), cr = live.filter(g => g.sev === 'crit'), wr = live.filter(g => g.sev === 'warn');
+    if (cr.length) F.push({ sev: 'crit', title: cr.length + (cr.length === 1 ? ' permission lets' : ' permissions let') + ' another address move funds or act freely', detail: 'Revoke any you do not recognise. Details and revoke commands are below.' });
+    if (wr.length) F.push({ sev: 'warn', title: wr.length + (wr.length === 1 ? ' permission' : ' permissions') + ' over staking or fees', detail: 'Usually granted to auto-compounding services. Revoke any you no longer use.' });
+    if (!cr.length && !wr.length && live.length) F.push({ sev: 'info', title: live.length + ' low-risk ' + (live.length === 1 ? 'permission' : 'permissions') + ' in place', detail: 'They cover voting, claiming or staking only.' });
+  }
+
+  // feegrants
+  const fees = (q.fee.ok && q.fee.ok.allowances) || [];
+  const feeP = el('div', { class: 'panel' }, el('h3', null, 'Fee allowances'));
+  if (q.fee.err && q.fee.err.status !== 404) feeP.append(el('p', { class: 'empty' }, 'Could not read fee allowances from the node.'));
+  else if (!fees.length) feeP.append(el('p', { class: 'empty' }, 'None. No other address can spend this wallet\'s LUNA on fees.'));
+  else {
+    feeP.append(el('ul', { class: 'findings' }, fees.map(f => { let al = f.allowance || {}; while (al.allowance) al = al.allowance; if (al.basic) al = al.basic;
+      const lim = (al.spend_limit || []).map(c => c.denom === 'uluna' ? fL(+c.amount) + ' LUNA' : c.amount + ' ' + c.denom).join(', ');
+      return el('li', null, pill(lim ? 'info' : 'warn', lim ? 'Note' : 'Look'), el('span', { class: 'what' }, short(f.grantee) + ' can pay fees from this wallet' + (lim ? ', up to ' + lim : ', with no limit')),
+        el('span', { class: 'why' }, 'grantee ', addrLink(f.grantee), al.expiration ? ' · expires ' + dtFmt.format(new Date(al.expiration)) : ' · never expires', cmdBlock('terrad tx feegrant revoke ' + a + ' ' + f.grantee + ' --from ' + a + TAIL))); })));
+    F.push({ sev: 'warn', title: fees.length + (fees.length === 1 ? ' fee allowance' : ' fee allowances') + ' issued', detail: 'Each lets another address spend this wallet\'s LUNA on transaction fees.' });
+  }
+
+  // cw20
+  const tokP = el('div', { class: 'panel' }, el('h3', null, 'Token spending allowances'), el('p', { class: 'empty' }, 'Checking CW20 tokens…'));
+  if (failed.length) F.push({ sev: 'info', tag: 'Partial', title: 'Some checks could not be read', detail: 'The node did not answer for: ' + failed.join(', ') + '. Run the checkup again in a moment.' });
+  body.append(el('div', { class: 'panel' }, el('h3', null, 'Account'), kv), hold, authz, feeP, tokP, originPanel());
+  paintHead(true);
+
+  const toks = await loadCw20();
+  const qs = btoa(JSON.stringify({ all_allowances: { owner: a, limit: 30 } }));
+  let unread = 0; const found = [];
+  await pool(toks, 4, async t => {
+    try { const j = await api('/cosmwasm/wasm/v1/contract/' + t.address + '/smart/' + qs); for (const al of (j.data && j.data.allowances) || []) if (al.allowance !== '0') found.push({ t, al }); }
+    catch (e) { unread++; }
+  });
+  if (run !== ckRun) return;
+  tokP.replaceChildren(el('h3', null, 'Token spending allowances'));
+  if (!found.length) tokP.append(el('p', { class: 'empty' }, 'None found across ' + (toks.length - unread) + ' CW20 tokens' + (unread ? ' (' + unread + ' could not be read)' : '') + '.'));
+  else {
+    tokP.append(el('ul', { class: 'findings' }, found.map(({ t, al }) => { const amt = Number(al.allowance) / Math.pow(10, t.decimals), huge = amt > 1e15, never = al.expires && al.expires.never;
+      return el('li', null, pill(huge || never ? 'warn' : 'info', huge || never ? 'Look' : 'Note'), el('span', { class: 'what' }, short(al.spender) + ' can spend ' + (huge ? 'an effectively unlimited amount of ' : nf2.format(amt) + ' ') + t.symbol),
+        el('span', { class: 'why' }, 'spender ', addrLink(al.spender), never ? ' · never expires' : ' · has an expiry', cmdBlock('terrad tx wasm execute ' + t.address + ' \'' + JSON.stringify({ decrease_allowance: { spender: al.spender, amount: al.allowance } }) + '\' --from ' + a + TAIL))); })));
+    F.push({ sev: 'warn', title: found.length + (found.length === 1 ? ' token allowance' : ' token allowances') + ' in place', detail: 'Each lets a contract or address move this wallet\'s tokens without asking again.' });
+  }
+  paintHead(false);
+}
+function originPanel() {
+  const out = el('p', { class: 'note', role: 'status' }, 'The chain cannot answer this one. Pick the closest option.');
+  const opt = (v, label) => el('label', null, el('input', { type: 'radio', name: 'origin', value: v, onchange: () => { const [sev, text] = ORIGIN[v]; out.replaceChildren(pill(sev, SEVWORD[sev]), ' ', text); } }), el('span', null, label));
+  return el('div', { class: 'panel' }, el('h3', null, 'Where was this wallet\'s recovery phrase first created?'),
+    el('p', { class: 'small prose' }, 'Older versions of Terra Station Desktop, released before May 2022, generated phrases with too little randomness. What matters is where the phrase was first made, not which wallet it was imported into later.'),
+    el('fieldset', { class: 'choices' }, el('legend', { class: 'label', style: 'padding:0;margin-bottom:6px' }, 'First created in'), opt('desktop', 'Terra Station Desktop app'), opt('extension', 'Terra Station browser extension'), opt('other', 'A hardware wallet or a different wallet app'), opt('unsure', 'Not sure')), out);
+}
+
+/* ---------- quantum ---------- */
+function paintLadder() {
+  const liveN = S.node && S.node.application_version;
+  const sdk = (liveN && liveN.cosmos_sdk_version) || CFG.staticSdk, comet = (S.node && S.node.default_node_info && S.node.default_node_info.version) || CFG.staticComet;
+  $('qr-src').textContent = liveN ? 'Versions reported by ' + S.epName : 'Versions from Terra core v2.22.0 source';
+  const c1 = vgte(comet, CFG.cometCompat), c2 = vgte(sdk, CFG.sdkPQ) && vgte(comet, CFG.cometPQ);
+  const types = S.keyTypes, c3 = types ? types.some(t => /dsa/i.test(t)) : (c2 ? null : false);
+  const v = valStats(), share = v ? v.pq / v.total : (c2 ? null : 0), c4 = share == null ? null : share >= 2 / 3;
+  const st = d => d == null ? pill('info', 'Needs live data') : d ? pill('ok', 'Done') : pill('warn', 'Not yet');
+  const sv3 = s => (ver(s) || []).join('.');
+  const steps = [
+    [c1, 'Keep cross-chain transfers working when neighbours switch', 'Terra runs CometBFT ' + sv3(comet) + '. Cosmos\'s guide says chains that verify a post-quantum chain over IBC need CometBFT 0.40, and notes a compatibility backport in 0.38.26. Terra connects to many chains, so this comes first.'],
+    [c2, 'Upgrade to the post-quantum release', 'Terra runs Cosmos SDK ' + sv3(sdk) + '. ML-DSA keys arrive in SDK 0.55 with CometBFT 0.40. Cosmos\'s upgrade guide starts from SDK 0.53 or 0.54, so Terra has intermediate upgrades to do first.'],
+    [c3, 'Allow ML-DSA validator keys', 'A chain-level setting changed through governance.' + (types ? ' Key types allowed today: ' + types.join(', ') + '.' : ' Today validators may only use ed25519.')],
+    [c4, 'Two-thirds of voting power rotates to ML-DSA', share == null ? 'Measured from the live validator set.' : 'Currently ' + (100 * share).toFixed(1) + '% of voting power signs with post-quantum keys' + (v ? ' (' + v.b.length + ' validators checked).' : '.') + ' The chain\'s consensus counts as quantum-safe at 66.7%.'],
+    [null, 'Wallets move to ML-DSA accounts', 'Every holder creates a new quantum-safe account and moves funds to it. Measuring this needs a full scan of all accounts, which this page does not do yet.', 'Not measured'],
+  ];
+  $('ladder').replaceChildren(...steps.map(s => el('li', { 'data-done': s[0] ? 'yes' : 'no' }, el('span', { class: 't' }, s[1]), s[3] ? pill('info', s[3]) : st(s[0]), el('span', { class: 'd' }, s[2]))));
+}
+function paintQubits() {
+  const host = $('qubits'), W = Math.max(260, host.clientWidth || 480), H = 190, L = 14, R = 14;
+  const x = v => L + (Math.log10(v) - 2) / 7 * (W - L - R);
+  const svg = sv('svg', { viewBox: `0 0 ${W} ${H}`, height: H, role: 'img', 'aria-label': 'Physical qubits on a log scale: about 1,100 in the best machines today, under 500,000 in the lowest estimate to break secp256k1, 320 million at the conservative end' });
+  const ay = 150;
+  svg.append(sv('line', { x1: L, x2: W - R, y1: ay, y2: ay, stroke: 'var(--line-strong)', 'stroke-width': 1 }));
+  for (const [v, t] of [[1e2, '100'], [1e3, '1K'], [1e4, '10K'], [1e5, '100K'], [1e6, '1M'], [1e7, '10M'], [1e8, '100M'], [1e9, '1B']]) {
+    svg.append(sv('line', { x1: x(v), x2: x(v), y1: ay, y2: ay + 5, stroke: 'var(--line-strong)', 'stroke-width': 1 }));
+    if (W > 380 || Math.log10(v) % 3 === 0) svg.append(sv('text', { x: x(v), y: ay + 19, 'text-anchor': 'middle' }, t));
+  }
+  const pts = [[1100, 'Best machines today', '1,000 to 1,200', 106], [5e5, 'Lowest estimate to break a wallet key', 'under 500,000 (Google, 2026)', 62], [3.2e8, 'Conservative end of estimates', '320 million', 18]];
+  for (const [v, a, b, ly] of pts) {
+    const px = x(v), w = Math.max(a.length * 6.7, b.length * 6.1), tx = Math.min(Math.max(px - w / 2, L), Math.max(L, W - R - w));
+    svg.append(sv('line', { x1: px, x2: px, y1: ly + 21, y2: ay, stroke: 'var(--line-strong)', 'stroke-width': 1 }));
+    svg.append(sv('circle', { cx: px, cy: ay, r: 6, fill: 'var(--s1)', stroke: 'var(--surface)', 'stroke-width': 2 }, sv('title', null, a + ': ' + b + ' physical qubits')));
+    svg.append(sv('text', { x: tx, y: ly, style: 'fill:var(--ink);font-weight:600' }, a));
+    svg.append(sv('text', { x: tx, y: ly + 15 }, b));
+  }
+  host.replaceChildren(svg);
+}
+async function runExposure() {
+  const r = readAddr($('qx-in').value), out = $('qx-out');
+  if (!r.ok) { out.textContent = r.why; return; }
+  if (!S.live) { out.textContent = 'This check needs a live connection to a node.'; return; }
+  out.textContent = 'Reading the account…';
+  try {
+    const j = await api('/cosmos/auth/v1beta1/accounts/' + r.addr), b = baseAccount(j.account);
+    if (r.kind === 'contract') { out.replaceChildren(pill('info', 'Contract'), ' Contracts have no signing key of their own. Their risk is whoever holds the admin key.'); return; }
+    if (b && b.pub_key) { const [name, pq] = keyScheme(b.pub_key);
+      out.replaceChildren(pq ? pill('ok', 'Quantum-safe') : pill('warn', 'Key is public'), ' ', pq ? 'This account signs with ' + name + ', a post-quantum scheme.' : 'The public key (' + name + ') has been on-chain since this wallet first signed. A future quantum computer could work back from it. Nothing to do today, but plan to move to a quantum-safe account when Terra supports them.'); }
+    else out.replaceChildren(pill('ok', 'Key not published'), ' This address has never signed a transaction, so only a hash of its key is public. It stays shielded until its first outgoing transaction.');
+  } catch (e) {
+    if (e.status === 404) out.replaceChildren(pill('ok', 'Key not published'), ' No account exists on-chain for this address yet, so no public key is exposed.');
+    else out.textContent = 'The node did not answer. Try again in a moment.';
+  }
+}
+
+/* ---------- tabs ---------- */
+const TABS = ['watch', 'checkup', 'quantum'];
+function showTab(t, quiet) {
+  if (!TABS.includes(t)) t = 'watch';
+  for (const k of TABS) { $('tab-' + k).setAttribute('aria-selected', k === t); $('wing-' + k).hidden = k !== t; }
+  store.set('lw.tab', t);
+  if (!quiet) try { history.replaceState(null, '', '#' + t); } catch (e) {}
+  if (t === 'watch') paintQueueChartOnly(); if (t === 'quantum') paintQubits();
+}
+function paintQueueChartOnly() { if (!$('wing-watch').hidden) paintQueue(); }
+
+/* ---------- boot ---------- */
+async function loadCore() {
+  const safe = (p, fn) => p.then(fn).catch(() => {}).then(() => { paintReadouts(); paintAlerts(); });
+  safe(api('/cosmos/base/tendermint/v1beta1/node_info'), j => { S.node = j; paintLadder(); });
+  safe(api('/cosmos/staking/v1beta1/pool'), j => { S.pool = j.pool; });
+  safe(api('/cosmos/bank/v1beta1/supply/by_denom?denom=uluna'), j => { S.supply = +j.amount.amount; });
+  safe(api('/cosmos/upgrade/v1beta1/current_plan'), j => { S.plan = j.plan || null; });
+  safe(api('/cosmos/consensus/v1/params'), j => { S.keyTypes = (j.params && j.params.validator && j.params.validator.pub_key_types) || null; paintLadder(); });
+  safe(api('/cosmos/gov/v1/proposals?proposal_status=2&pagination.limit=20'), j => { S.props = j.proposals || []; paintGov(); });
+  safe(api('/cosmos/gov/v1/proposals?pagination.reverse=true&pagination.limit=6'), j => { S.recent = j.proposals || []; paintGov(); });
+  safe((async () => { let all = [], key = null, n = 0; do { const j = await api('/cosmos/staking/v1beta1/validators?pagination.limit=500' + (key ? '&pagination.key=' + encodeURIComponent(key) : '')); all = all.concat(j.validators || []); key = j.pagination && j.pagination.next_key; } while (key && ++n < 5); return all; })(), v => { S.vals = v; paintVals(); paintLadder(); scanQueue().then(() => tally('attacker')); });
+  refreshList();
+  S.watch.forEach(loadWatch);
+  setInterval(async () => { if (document.hidden || !S.live) return; try { const j = await api('/cosmos/base/tendermint/v1beta1/blocks/latest'); S.block = j.block.header; paintConn(); } catch (e) {} }, 20000);
+}
+async function boot() {
+  $('conn').dataset.state = 'wait'; $('conn-text').textContent = 'Looking for a node…'; $('offline').hidden = true;
+  const ok = await probe();
+  S.live = ok; paintConn(); paintReadouts(); paintAlerts(); paintList(); paintWatch();
+  if (ok) loadCore();
+}
+
+drawMoon();
+S.watch = (store.get('lw.watch', []) || []).filter(a => readAddr(a).ok).slice(0, 12);
+paintReadouts(); paintAlerts(); paintList(); paintWatch(); paintLadder();
+const first = (location.hash || '').slice(1);
+showTab(TABS.includes(first) ? first : store.get('lw.tab', 'watch'), true);
+for (const k of TABS) $('tab-' + k).addEventListener('click', () => showTab(k));
+$('retry').addEventListener('click', boot);
+$('q-only').addEventListener('change', paintTop);
+$('list-q').addEventListener('input', paintList);
+$('list-more').addEventListener('click', () => { S.listShown = 1e6; paintList(); });
+$('tally-all').addEventListener('click', () => tally('victim'));
+$('watch-add').addEventListener('click', addWatch);
+$('watch-in').addEventListener('keydown', e => { if (e.key === 'Enter') addWatch(); });
+$('ck-run').addEventListener('click', runCheckup);
+$('ck-in').addEventListener('keydown', e => { if (e.key === 'Enter') runCheckup(); });
+$('ck-sample').addEventListener('click', () => { $('ck-in').value = BUNDLED.v[0] || ''; runCheckup(); });
+$('qx-run').addEventListener('click', runExposure);
+$('qx-in').addEventListener('keydown', e => { if (e.key === 'Enter') runExposure(); });
+let rz; addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { paintQueueChartOnly(); if (!$('wing-quantum').hidden) paintQubits(); }, 150); });
+boot();
+})();
+</script>
+</body></html>
